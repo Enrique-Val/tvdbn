@@ -1,0 +1,11 @@
+Package: tvdbn
+Type: Package
+Title: Time-varying Dynamic Bayesian Networks in R
+Version: 0.1.0
+Author: Enrique Valero Leal
+Maintainer: Enrique Valero Leal
+Description: An implementation of Dynamic Bayesian Networks in R as defined by Song et Al. (2009)
+    Since the size of the Networks grow large, Explainability techniques are implemented as well.
+License: Affero General Public License v3.0
+Encoding: UTF-8
+LazyData: FALSE
