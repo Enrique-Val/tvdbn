@@ -76,15 +76,17 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   sd = c()
   for (i in 1:ncol(x)) {
     mean_i = sum(t1_weights*x[,i])/sum(t1_weights)
-    sd_i = sum((mean_i-x[,i])^2*t1_weights)/sum(t1_weights)
+    sd_i = sum(abs(mean_i-x[,i])*t1_weights)/sum(t1_weights)
     mean = c(mean, mean_i)
     sd = c(sd, sd_i)
   }
 
+  intercept[[1]] = mean
+  variance[[1]] = sd
   for (t_star in 2:nrow(x)) {
     A[[t_star-1]] = matrix(nrow = length(x[1,]), ncol = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1), map(dimnames(x)[[2]],time_name,t_star-2)))
-    intercept[[t_star-1]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
-    variance[[t_star-1]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
+    intercept[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
+    variance[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
   }
 
   # Process the blacklist
@@ -165,8 +167,8 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       }
       if (t_star>=nrow(x)-4 && (type == "causal1" || type == "causal2")) {
         A[[t_star-1]][i,] = A[[t_star-2]][i,]
-        intercept[[t_star-1]][i] = intercept[[t_star-2]][i]
-        variance[[t_star-1]][i] = variance[[t_star-2]][i]
+        intercept[[t_star]][i] = intercept[[t_star-1]][i]
+        variance[[t_star]][i] = variance[[t_star-1]][i]
       }
       else {
         if (TRUE) {
@@ -185,12 +187,12 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
         }
         # Index of the of the fitting that yielded the best results
         index = cvfit$index[2]
-        print(cvfit$glmnet.fit$beta[,index])
+        #print(cvfit$glmnet.fit$beta[,index])
         #print(cvfit$glmnet.fit$beta
         # Store in a triple: (coefficients, intercept, variance).
         A[[t_star-1]][i,] =  as.matrix(cvfit$glmnet.fit$beta)[,index]
-        intercept[[t_star-1]][i] = cvfit$glmnet.fit$a0[index]
-        variance[[t_star-1]][i] = sqrt(cvfit$cvm[index])
+        intercept[[t_star]][i] = cvfit$glmnet.fit$a0[index]
+        variance[[t_star]][i] = sqrt(cvfit$cvm[index])
         previous_lambda[[i]] = cvfit$lambda
       }
     }
@@ -229,10 +231,12 @@ learn_tvdbn_structure <- function(A) {
   return(bn_to_tvdbn(dag))
 }
 
+
+
 learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
   distribution_list = list()
-  for (i in dimnames(x)[[2]]) {
-    distribution_list[[time_name(i,0)]] = list(coef = c("(Intercept)"=0), sd = 1)
+  for (i in 1:length(dimnames(x)[[2]])) {
+    distribution_list[[time_name(dimnames(x)[[2]][i],0)]] = list(coef = c("(Intercept)"=intercept[[1]][i]), sd = variance[[1]][i])
   }
 
   for (t in 1:(length(A))) {
@@ -243,9 +247,9 @@ learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
       coefficient_list = A.t[i,non_zero_entries]
       names(coefficient_list) = names(A.t[i,])[non_zero_entries]
       # Append the intercept to the list.
-      coefficient_list = c(coefficient_list, "(Intercept)" = intercept[[t]][i])
+      coefficient_list = c(coefficient_list, "(Intercept)" = intercept[[t+1]][i])
       # In t.i.dist we store the normal conditioned distribution of the variable i in the time t
-      t.i.dist = list(coef = coefficient_list, sd = variance[[t]][i])
+      t.i.dist = list(coef = coefficient_list, sd = variance[[t+1]][i])
       distribution_list[[i.name]] = t.i.dist
     }
   }
