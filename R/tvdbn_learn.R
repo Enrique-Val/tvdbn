@@ -13,11 +13,6 @@ library(data.table)
 #######################
 
 # Kernel of the function
-time_name <- function(name, t) {
-  return(paste(name,t,sep="_t_"))
-}
-
-
 kernel_function <- function(value, kernel_bandwidth) {
   return(exp(-(value^2)/kernel_bandwidth))
 }
@@ -56,7 +51,7 @@ weight_causal_time_series <- function(t_star, dataset_length) {
   if (t_star == 1) {
     tmp = 1:dataset_length
     tmp = causal_kernel_function(tmp-1)
-    
+
   }
   else {
     tmp = 1:(dataset_length-t_star+2)
@@ -74,7 +69,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   intercept = list()
   variance = list()
   previous_lambda = list()
-  
+
   # Find the marginal distributions of the elements of the first time point
   t1_weights = weight_time_series(1,nrow(x))
   mean = c()
@@ -85,19 +80,19 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
     mean = c(mean, mean_i)
     sd = c(sd, sd_i)
   }
-  
+
   for (t_star in 2:nrow(x)) {
     A[[t_star-1]] = matrix(nrow = length(x[1,]), ncol = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1), map(dimnames(x)[[2]],time_name,t_star-2)))
     intercept[[t_star-1]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
     variance[[t_star-1]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
   }
-  
+
   # Process the blacklist
   blacklist_processed = vector(mode = "list", length = ncol(x))
-  
-  
+
+
   print(blacklist_processed)
-  
+
   for (forbidden_arc in blacklist) {
     i = match(forbidden_arc[1], colnames(x))
     j = match(forbidden_arc[2], colnames(x))
@@ -105,14 +100,14 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
     print(j)
     blacklist_processed[[j]] = c(blacklist_processed[[j]],i)
   }
-  
+
   #Process the whitelist
   # Process the blacklist
   whitelist_processed = matrix(data=1, nrow = ncol(x), ncol = ncol(x), dimnames=list(dimnames(x)[[2]],dimnames(x)[[2]]))
-  
-  
+
+
   print(whitelist_processed)
-  
+
   for (mandatory_arc in whitelist) {
     i = match(mandatory_arc[1], colnames(x))
     j = match(mandatory_arc[2], colnames(x))
@@ -120,7 +115,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
     print(j)
     whitelist_processed[j,i] = 0
   }
-  
+
   #Iterate for all times and variables
   lambda=list()
   for (i in 1:ncol(x)) {
@@ -192,7 +187,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
         index = cvfit$index[2]
         print(cvfit$glmnet.fit$beta[,index])
         #print(cvfit$glmnet.fit$beta
-        # Store in a triple: (coefficients, intercept, variance). 
+        # Store in a triple: (coefficients, intercept, variance).
         A[[t_star-1]][i,] =  as.matrix(cvfit$glmnet.fit$beta)[,index]
         intercept[[t_star-1]][i] = cvfit$glmnet.fit$a0[index]
         variance[[t_star-1]][i] = sqrt(cvfit$cvm[index])
@@ -203,7 +198,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   end.time <- Sys.time()
   print(end.time-start.time)
   return(list("A" = A, "intercept" = intercept, "variance" = variance, "lambda" = lambda))
-  
+
 }
 
 
@@ -218,7 +213,7 @@ learn_tvdbn_structure <- function(A) {
     string_model.t = ""
     for (i in dimnames(A.t)[[1]]) {
       string_model = paste(string_model,"[",i,"|",sep="")
-      
+
       for (j in dimnames(A.t)[[2]]) {
         if (A.t[i,j] != 0) {
           string_model = paste(string_model,j,":",sep="")
@@ -231,7 +226,7 @@ learn_tvdbn_structure <- function(A) {
   }
   print(string_model)
   dag <-model2network(string_model)
-  return(dag)
+  return(bn_to_tvdbn(dag))
 }
 
 learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
@@ -239,7 +234,7 @@ learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
   for (i in dimnames(x)[[2]]) {
     distribution_list[[time_name(i,0)]] = list(coef = c("(Intercept)"=0), sd = 1)
   }
-  
+
   for (t in 1:(length(A))) {
     A.t = A[[t]]
     for (i in 1:length(dimnames(A.t)[[1]])) {
@@ -258,11 +253,12 @@ learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
   variables = c()
   for (i in dimnames(A[[1]])[[1]]) {
     variables = c(variables, substring(i,1,str_length(i)-4))
-    
+
   }
-  
-  tvd_bayesian_network = list("bn" = bayesian_network, "n" = length(A)+1, "variables" = variables)
-  attr(tvd_bayesian_network, "class") = c("tvdbn.fit",class(bayesian_network))
+
+  tvd_bayesian_network = bn_to_tvdbn(bayesian_network)
+  #tvd_bayesian_network = list("bn" = bayesian_network, "n" = length(A)+1, "variables" = variables)
+  #attr(tvd_bayesian_network, "class") = c("tvdbn.fit",class(bayesian_network))
   return (tvd_bayesian_network)
 }
 
