@@ -47,14 +47,14 @@ bn_to_tvdbn <- function(bn) {
 #' @description  Get the number of time points of time instants of the Time-Varying DBN.
 #'
 #' @param tvdbn The Time-varying DBN. Can be an object of type `tvdbn` or `tvdbn.fit`
-#' @return The number of time points of time instants of the Time-Varying DBN.
+#' @return The number of time instants of the Time-Varying DBN.
 #' @import bnlearn
 #' @export
 get_time_points <- function(tvdbn) {
   if (class(tvdbn)[1] == "tvdbn.fit") {
     first_var = remove_time_name(nodes(tvdbn)[1])[1]
     time_points = 0
-    for (i in nodes(tvdbn)) {
+    for (i in sort(nodes(tvdbn))) {
       if (first_var == remove_time_name(i)[1]) {
         time_points = time_points+1
       }
@@ -67,7 +67,7 @@ get_time_points <- function(tvdbn) {
   else if (class(tvdbn)[1] == "tvdbn") {
     first_var = remove_time_name(names(tvdbn$nodes)[1])[1]
     time_points = 0
-    for (i in names(tvdbn$nodes)) {
+    for (i in sort(names(tvdbn$nodes))) {
       if (first_var == remove_time_name(i)[1]) {
         time_points = time_points+1
       }
@@ -78,3 +78,33 @@ get_time_points <- function(tvdbn) {
   }
 }
 
+
+#' @title Get the template variables
+#'
+#' @description  Get the template variables of our TV-DBN, i.e. the variables not
+#' instantiated in each time point.
+#'
+#' @param tvdbn The Time-varying DBN. Can be an object of type `tvdbn` or `tvdbn.fit`
+#' @return The number of template variables of the Time-Varying DBN.
+#' @import bnlearn
+#' @export
+get_variables <- function(tvdbn) {
+  time_instants = get_time_points(tvdbn)
+  node_vector = NULL
+  if (class(tvdbn)[1] == "tvdbn.fit") {
+    node_vector = names(tvdbn)
+  }
+
+  else if (class(tvdbn)[1] == "tvdbn") {
+    node_vector = names(tvdbn$nodes)
+  }
+
+  variable_vector = c()
+  i = 1
+  while(i <= length(node_vector)) {
+    variable_vector = c(variable_vector, tvdbn::remove_time_name(node_vector[i])[1])
+    i = i + time_instants
+  }
+
+  return(variable_vector)
+}
