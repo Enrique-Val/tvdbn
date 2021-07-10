@@ -69,6 +69,8 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   intercept = list()
   variance = list()
   previous_lambda = list()
+  sd_cv = c()
+  sd_b = c()
 
   # Find the marginal distributions of the elements of the first time point
   t1_weights = weight_time_series(1,nrow(x))
@@ -113,8 +115,8 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   for (mandatory_arc in whitelist) {
     i = match(mandatory_arc[1], colnames(x))
     j = match(mandatory_arc[2], colnames(x))
-    print(i)
-    print(j)
+    #print(i)
+    #print(j)
     whitelist_processed[j,i] = 0
   }
 
@@ -194,11 +196,36 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
         intercept[[t_star]][i] = cvfit$glmnet.fit$a0[index]
         variance[[t_star]][i] = sqrt(cvfit$cvm[index])
         previous_lambda[[i]] = cvfit$lambda
+
+        # Compare crossvalidation with biased evaluation
+        asse = glmnet::assess.glmnet(cvfit,x_i_t, y_i_t,weights)
+        sd_cv = c(sd_cv, cvfit$cvm[index])
+        sd_b = c(sd_b, asse$mse[1])
       }
     }
   }
   end.time <- Sys.time()
   print(end.time-start.time)
+
+  #Compare evaluation with biased evaluation
+  sd_cv = sd_cv
+  print("cv mean and sd")
+  print(mean(sd_cv))
+  print(sd(sd_cv))
+  print("biased mean and sd")
+  print(mean(sd_b))
+  print(sd(sd_b))
+  print("diff mean and sd")
+  print(mean(abs(sd_cv-sd_b)))
+  print(sd(abs(sd_cv-sd_b)))
+  print("diff std mean and sd")
+  mean = mean(c(sd_cv,sd_b))
+  sd = sd(c(sd_cv,sd_b))
+  sd_cv = (sd_cv-mean)/sd
+  sd_b = (sd_b-mean)/sd
+  diff_list = abs(sd_cv-sd_b)
+  print(mean(diff_list))
+  print(sd(diff_list))
   return(list("A" = A, "intercept" = intercept, "variance" = variance, "lambda" = lambda))
 
 }
