@@ -67,28 +67,28 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   start.time <- Sys.time()
   A = list()
   intercept = list()
-  variance = list()
+  sd = list()
   previous_lambda = list()
   sd_cv = c()
   sd_b = c()
 
   # Find the marginal distributions of the elements of the first time point
-  t1_weights = weight_time_series(1,nrow(x))
-  mean = c()
-  sd = c()
+  weights_t0 = weight_time_series(1,nrow(x))
+  mean_t0 = c()
+  sd_t0 = c()
   for (i in 1:ncol(x)) {
-    mean_i = sum(t1_weights*x[,i])/sum(t1_weights)
-    sd_i = sum(abs(mean_i-x[,i])*t1_weights)/sum(t1_weights)
-    mean = c(mean, mean_i)
-    sd = c(sd, sd_i)
+    mean_t0_i = sum(weights_t0*x[,i])/sum(weights_t0)
+    sd_t0_i = sum(abs(mean_t0_i-x[,i])*weights_t0)/sum(weights_t0)
+    mean_t0 = c(mean_t0, mean_t0_i)
+    sd_t0 = c(sd_t0, sd_t0_i)
   }
 
-  intercept[[1]] = mean
-  variance[[1]] = sd
+  intercept[[1]] = mean_t0
+  sd[[1]] = sd_t0
   for (t_star in 2:nrow(x)) {
     A[[t_star-1]] = matrix(nrow = length(x[1,]), ncol = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1), map(dimnames(x)[[2]],time_name,t_star-2)))
     intercept[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
-    variance[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
+    sd[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
   }
 
   # Process the blacklist
@@ -100,8 +100,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   for (forbidden_arc in blacklist) {
     i = match(forbidden_arc[1], colnames(x))
     j = match(forbidden_arc[2], colnames(x))
-    print(i)
-    print(j)
     blacklist_processed[[j]] = c(blacklist_processed[[j]],i)
   }
 
@@ -115,8 +113,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   for (mandatory_arc in whitelist) {
     i = match(mandatory_arc[1], colnames(x))
     j = match(mandatory_arc[2], colnames(x))
-    #print(i)
-    #print(j)
     whitelist_processed[j,i] = 0
   }
 
@@ -130,22 +126,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       x_i_t = NULL
       y_i_t = NULL
       ts_length = nrow(x)
-      if (type != "causal1" && type != "causal2" ) {
-        #Reweight time series
-        weights = weight_time_series(t_star, ts_length)
-        weights = weights[2:ts_length]
-        y_i_t = x[2:length(x[,1]),i]
-        x_i_t = x[1:(length(x[,1])-1),]
-      }
-      else if (type == "causal1") {
-        #Reweight time series using the causal function
-        weights = weight_causal_time_series(t_star, ts_length)
-        weights = weights[2:ts_length]
-        y_i_t = x[2:length(x[,1]),i]
-        x_i_t = x[1:(length(x[,1])-1),]
-        #print(weights)
-      }
-      else {
+      if (type == "causal") {
         # Reduce time series to the causal boundary (previous + current + following instants)
         # If the current instant is the first or the second, there is nothing to do
         if (t_star == 2) {
@@ -160,6 +141,13 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
           x_i_t = x[(t_star-2):(ts_length-1),]
         }
       }
+      else {
+        #Reweight time series
+        weights = weight_time_series(t_star, ts_length)
+        weights = weights[2:ts_length]
+        y_i_t = x[2:length(x[,1]),i]
+        x_i_t = x[1:(length(x[,1])-1),]
+      }
       # L1-regression
       cvfit = NULL
       exclude_list = blacklist_processed[[i]]
@@ -167,23 +155,16 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       if (type == "original" && !(i %in% exclude_list)) {
         exclude_list = append(exclude_list,i)
       }
-      if (t_star>=nrow(x)-4 && (type == "causal1" || type == "causal2")) {
+      if (t_star>=nrow(x)-4 && type == "causal") {
         A[[t_star-1]][i,] = A[[t_star-2]][i,]
         intercept[[t_star]][i] = intercept[[t_star-1]][i]
-        variance[[t_star]][i] = variance[[t_star-1]][i]
+        sd[[t_star]][i] = sd[[t_star-1]][i]
       }
       else {
-        if (TRUE) {
-          cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
-                            exclude = exclude_list, penalty.factor = whitelist_processed[i,],
-                            nfolds = 3)
-        }
-        else {
-          cvfit = glmnetPlus::cv.glmnet(x_i_t,y_i_t,weights= weights,
-                                    exclude = exclude_list, penalty.factor = whitelist_processed[i,],
-                                     lambda = previous_lambda[[i]], beta0 =A[[t_star-2]][i,],
-                                    type.gaussian = "naive")
-        }
+        cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
+                          exclude = exclude_list, penalty.factor = whitelist_processed[i,],
+                          nfolds = 3)
+
         if (i == 1) {
           lambda[[t_star-1]]=cvfit$lambda
         }
@@ -191,10 +172,10 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
         index = cvfit$index[2]
         #print(cvfit$glmnet.fit$beta[,index])
         #print(cvfit$glmnet.fit$beta
-        # Store in a triple: (coefficients, intercept, variance).
+        # Store in a triple: (coefficients, intercept, sd).
         A[[t_star-1]][i,] =  as.matrix(cvfit$glmnet.fit$beta)[,index]
         intercept[[t_star]][i] = cvfit$glmnet.fit$a0[index]
-        variance[[t_star]][i] = sqrt(cvfit$cvm[index])
+        sd[[t_star]][i] = sqrt(cvfit$cvm[index])
         previous_lambda[[i]] = cvfit$lambda
 
         # Compare crossvalidation with biased evaluation
@@ -208,7 +189,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   print(end.time-start.time)
 
   #Compare evaluation with biased evaluation
-  sd_cv = sd_cv
   print("cv mean and sd")
   print(mean(sd_cv))
   print(sd(sd_cv))
@@ -219,14 +199,14 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   print(mean(abs(sd_cv-sd_b)))
   print(sd(abs(sd_cv-sd_b)))
   print("diff std mean and sd")
-  mean = mean(c(sd_cv,sd_b))
-  sd = sd(c(sd_cv,sd_b))
-  sd_cv = (sd_cv-mean)/sd
-  sd_b = (sd_b-mean)/sd
+  mean_comp = mean(c(sd_cv,sd_b))
+  sd_comp = sd(c(sd_cv,sd_b))
+  sd_cv = (sd_cv-mean_comp)/sd_comp
+  sd_b = (sd_b-mean_comp)/sd_comp
   diff_list = abs(sd_cv-sd_b)
   print(mean(diff_list))
   print(sd(diff_list))
-  return(list("A" = A, "intercept" = intercept, "variance" = variance, "lambda" = lambda))
+  return(list("A" = A, "intercept" = intercept, "sd" = sd, "lambda" = lambda))
 
 }
 
@@ -260,10 +240,10 @@ learn_tvdbn_structure <- function(A) {
 
 
 
-learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
+learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   distribution_list = list()
   for (i in 1:length(dimnames(x)[[2]])) {
-    distribution_list[[time_name(dimnames(x)[[2]][i],0)]] = list(coef = c("(Intercept)"=intercept[[1]][i]), sd = variance[[1]][i])
+    distribution_list[[time_name(dimnames(x)[[2]][i],0)]] = list(coef = c("(Intercept)"=intercept[[1]][i]), sd = sd[[1]][i])
   }
 
   for (t in 1:(length(A))) {
@@ -276,7 +256,7 @@ learn_tvdbn_parameters <- function(dag, A, intercept, variance) {
       # Append the intercept to the list.
       coefficient_list = c(coefficient_list, "(Intercept)" = intercept[[t+1]][i])
       # In t.i.dist we store the normal conditioned distribution of the variable i in the time t
-      t.i.dist = list(coef = coefficient_list, sd = variance[[t+1]][i])
+      t.i.dist = list(coef = coefficient_list, sd = sd[[t+1]][i])
       distribution_list[[i.name]] = t.i.dist
     }
   }
@@ -297,9 +277,9 @@ learn_tvdbn <- function(x, type = "relaxed", blacklist = list(), whitelist = lis
   ret = learn_tvdbn_coefficients(x, type = type, blacklist = blacklist, whitelist = whitelist)
   A = ret[["A"]]
   intercept = ret[["intercept"]]
-  variance = ret[["variance"]]
+  sd = ret[["sd"]]
   dag = learn_tvdbn_structure(A)
-  tvdbn = learn_tvdbn_parameters(dag, A, intercept, variance)
+  tvdbn = learn_tvdbn_parameters(dag, A, intercept, sd)
   return(tvdbn)
 }
 
