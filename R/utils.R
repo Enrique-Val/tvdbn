@@ -148,5 +148,21 @@ transition_network_normalize_name <- function(trans_network) {
 
 }
 
+#' @title  List of the structure of all the transition networks
+#'
+#' @description  Get all the transition network structures of the Time-varying DBN
+#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`.
+#' @return A list `tvdbn` containing the structure (type `tvdbn`) of all the
+#'  transition networks
+#'
+#' @export
+all_transition_network_graph <- function(tvdbn.fit) {
+  tn_list = list()
+  time_instants = tvdbn::get_time_points(tvdbn.fit)
+  for (i in 1:(time_instants-1)) {
+    tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn.fit, i))
+  }
+  return(tn_list)
+}
 
 
