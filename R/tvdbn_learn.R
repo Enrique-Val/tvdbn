@@ -116,6 +116,25 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
     whitelist_processed[j,i] = 0
   }
 
+  # Check for other arcs restrictions
+  # In the original article, there cannot be arcs between the same variable in different time points.
+  if (type == "original") {
+    for (name_i in colnames(x)) {
+      i = match(name_i, colnames(x))
+      if (!(i %in% blacklist_processed[[i]])) {
+        blacklist_processed[[i]] = c(blacklist_processed[[i]],i)
+      }
+    }
+  }
+
+  # If autoregressive is selected, the model forces x_t-1 as the parent of x_t (opposite of "original")
+  else if (type == "autoregressive") {
+    for (i in colnames(x)) {
+      whitelist_processed[i,i] = 0
+    }
+  }
+
+
   #Iterate for all times and variables
   lambda=list()
   for (i in 1:ncol(x)) {
@@ -150,11 +169,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       }
       # L1-regression
       cvfit = NULL
-      exclude_list = blacklist_processed[[i]]
-      # In the original article, there cannot be arcs between the same variable in different time points.
-      if (type == "original" && !(i %in% exclude_list)) {
-        exclude_list = append(exclude_list,i)
-      }
       if (t_star>=nrow(x)-4 && type == "causal") {
         A[[t_star-1]][i,] = A[[t_star-2]][i,]
         intercept[[t_star]][i] = intercept[[t_star-1]][i]
@@ -162,7 +176,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       }
       else {
         cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
-                          exclude = exclude_list, penalty.factor = whitelist_processed[i,],
+                          exclude = blacklist_processed[[i]], penalty.factor = whitelist_processed[i,],
                           nfolds = 3, dfmax = max_parents)
 
         if (i == 1) {
