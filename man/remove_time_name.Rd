@@ -14,7 +14,7 @@ Be careful to supply a string with the correct format}
 A vector with two elements:
 \enumerate{
 \item The name of the variable (without the time appended)
-\item The time point
+\item The time point (be careful, since it the type is \code{character})
 }
 }
 \description{

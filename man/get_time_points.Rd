@@ -10,7 +10,7 @@ get_time_points(tvdbn)
 \item{tvdbn}{The Time-varying DBN. Can be an object of type \code{tvdbn} or \code{tvdbn.fit}}
 }
 \value{
-The number of time points of time instants of the Time-Varying DBN.
+The number of time instants of the Time-Varying DBN.
 }
 \description{
 Get the number of time points of time instants of the Time-Varying DBN.

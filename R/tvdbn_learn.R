@@ -61,7 +61,7 @@ weight_causal_time_series <- function(t_star, dataset_length) {
   return(tmp)
 }
 
-learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), whitelist = list()) {
+learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
   print(length(x[,1]))
   print(nrow(x))
   start.time <- Sys.time()
@@ -163,7 +163,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       else {
         cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
                           exclude = exclude_list, penalty.factor = whitelist_processed[i,],
-                          nfolds = 3)
+                          nfolds = 3, dfmax = max_parents)
 
         if (i == 1) {
           lambda[[t_star-1]]=cvfit$lambda
@@ -273,8 +273,9 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   return (tvd_bayesian_network)
 }
 
-learn_tvdbn <- function(x, type = "relaxed", blacklist = list(), whitelist = list()) {
-  ret = learn_tvdbn_coefficients(x, type = type, blacklist = blacklist, whitelist = whitelist)
+learn_tvdbn <- function(x, type = "relaxed", blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
+  ret = learn_tvdbn_coefficients(x, type = type, blacklist = blacklist,
+                                 whitelist = whitelist, max_parents = max_parents)
   A = ret[["A"]]
   intercept = ret[["intercept"]]
   sd = ret[["sd"]]

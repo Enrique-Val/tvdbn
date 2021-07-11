@@ -116,15 +116,13 @@ transition_network_markovian_order <- function(trans_network) {
 }
 
 
-#' @title  Structure of the transition network in a time point
+#' @title  Normalize the name of the time variables of a TN
 #'
-#' @description  Get the transition network of a certain time instant.
-#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`.
-#' @param time The transition network to obtain.
-#' @return The structure of the transition network of the TV-DBN in
-#' the given time instant.
+#' @description  Normalize the name of the time variables of a Transition Network.
+#' This allows comparing them using the Hamming distance
+#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn`.
+#' @return The transition network with the naming normalized
 #'
-#' @import purrr
 #' @export
 transition_network_normalize_name <- function(trans_network) {
   # Get the Markovian Order of the Transition Network
@@ -149,3 +147,6 @@ transition_network_normalize_name <- function(trans_network) {
   return(model2network(mstring))
 
 }
+
+
+
