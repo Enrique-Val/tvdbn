@@ -11,6 +11,8 @@ time_name <- function(name, t) {
   return(paste(name,t,sep="_t_"))
 }
 
+
+
 #' @title  Get the name of a variable and the time point from a time name
 #'
 #' @description  Get the name of a variable and the time point from a time name.
@@ -96,7 +98,7 @@ transition_network_graph <- function(tvdbn.fit, time) {
   if (time > 0) {
     var_list = c(var_list,unlist(map(variables, time_name, time-1)))
   }
-  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = var_list))
+  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list)))
 }
 
 
@@ -127,24 +129,35 @@ transition_network_markovian_order <- function(trans_network) {
 transition_network_normalize_name <- function(trans_network) {
   # Get the Markovian Order of the Transition Network
   order = transition_network_markovian_order(trans_network)
-  min = Inf
+  time_points = c()
   sorted_list = sort(names(trans_network$nodes))
-  for (i in sorted_list[0:order+1]) {
-    if (as.numeric(remove_time_name(i)[2]) < min) {
-      min = as.numeric(remove_time_name(i)[2])
+  for (i in sorted_list[1:(order+1)]) {
+    time_points = c(time_points,as.numeric(remove_time_name(i)[2]))
+  }
+  time_points = sort(time_points)
+
+  # bnlearn has a bug and does not let us use the function nodes with inherited class
+  # We cast to class "bn" and later we will revert this change
+  class(trans_network) = "bn"
+
+
+  # Number of variables
+  n_vars = length(nodes(trans_network))/(order+1)
+  time_nodes = nodes(trans_network)
+
+  for (i in 1:(order+1)) {
+    old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
+    new_tp = match(old_tp, time_points)-1
+    for (j in 1:n_vars-1) {
+      old_name = time_nodes[i+j*(order+1)]
+      decomposed_name = remove_time_name(old_name)
+      new_name = time_name(decomposed_name[1],new_tp)
+      nodes(trans_network)[i+j*(order+1)] = new_name
     }
   }
-  mstring = modelstring(trans_network)
 
-  for (i in 0:order) {
-    for (separator in c("]","\\|",":")){
-      old = paste("_t_",as.character(min+i),separator,sep="")
-      new = paste("_t_",as.character(i),separator,sep="")
-      mstring = gsub(old, new, mstring)
-    }
-  }
-
-  return(model2network(mstring))
+  class(trans_network) = c("tvdbn",class(trans_network))
+  return(trans_network)
 
 }
 
