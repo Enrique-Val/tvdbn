@@ -281,7 +281,7 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
 
   }
 
-  tvd_bayesian_network = bn_to_tvdbn(bayesian_network)
+  tvd_bayesian_network = tvdbn::bn_to_tvdbn(bayesian_network)
   #tvd_bayesian_network = list("bn" = bayesian_network, "n" = length(A)+1, "variables" = variables)
   #attr(tvd_bayesian_network, "class") = c("tvdbn.fit",class(bayesian_network))
   return (tvd_bayesian_network)

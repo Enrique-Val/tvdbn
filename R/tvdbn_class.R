@@ -1,7 +1,7 @@
 # This file define the class tvdbn and some basic functionality of it
 
 # We selected the S3 class convention instead of S4 since bnlearn using S3. We highly recommend adopting
-# the S4 in future projects, but in this project was unfeasible.
+# the S4 in future projects, but in this project it was unfeasible.
 
 
 #' @title Cast from a regular Bayesian Network to a Time-varying DBN

@@ -170,10 +170,11 @@ transition_network_normalize_name <- function(trans_network) {
 #'
 #' @export
 all_transition_network_graph <- function(tvdbn.fit) {
+  tvdbn = tvdbn::graph(tvdbn.fit)
   tn_list = list()
   time_instants = tvdbn::get_time_points(tvdbn.fit)
   for (i in 1:(time_instants-1)) {
-    tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn.fit, i))
+    tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn, i))
   }
   return(tn_list)
 }
