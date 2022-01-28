@@ -33,7 +33,7 @@ hamming_changes <- function(tvdbn.fit, time = NULL) {
 #'
 #' @description  Get the global graph of two Bayesian networks.
 #'
-#' The global graphs contains just the arcs that are present in both networks. Such
+#' The global graph contains just the arcs that are present in both networks. Such
 #' arcs are referred as persistent arcs or persistent edges
 #' @param bn1 An input Bayesian network
 #' @param bn2 An input Bayesian network with the same set of vertex than `bn1`
@@ -63,7 +63,7 @@ global_graph_2g <- function(bn1, bn2, time = NULL) {
 #'
 #' @description  Get the global graph of a time-varying dynamic Bayesian network or of a list of Bayesian networks
 #'
-#' The global graphs contains just the arcs that are present in all the networks. Such
+#' The global graph contains just the arcs that are present in all the networks. Such
 #' arcs are referred as persistent arcs or persistent edges
 #' @param tvdbn A  time-varying DBN of type `tvdbn.fit` or `tvdbn` OR a list of Bayesian networks
 #' with the same set of nodes
@@ -84,6 +84,42 @@ global_graph <- function(tvdbn) {
 }
 
 
+
+#' @title  The Hamming graph of two Bayesian networks
+#'
+#' @description  Get the Hamming graph of two Bayesian networks.
+#'
+#' The Hamming graph contains the arcs of both networks that are absent in the other. Such
+#' arcs are referred as contingent arcs or contingent edges
+#' @param bn1 An input Bayesian network
+#' @param bn2 An input Bayesian network with the same set of vertex than `bn1`
+#' @return The Hamming graph of the two input Bayesian networks
+#'
+#' @export
+hamming_graph_2g <- function(bn1, bn2, time = NULL) {
+  # Convert to bn if the input object is type bn.fit
+  if (any(class(bn1) == "bn.fit")) {
+    bn1 = tvdbn::graph(bn1)
+  }
+  if (any(class(bn2) == "bn.fit")) {
+    bn2 = tvdbn::graph(bn2)
+  }
+  len = length(bn1$arcs[,1])
+  bn1_arcs = bn1$arcs
+  for (i in 1:length(bn1_arcs[,1])) {
+    #Check if the arcs is in the other network bn2
+    if (any(apply(bn2$arcs, 1, function(x,want) isTRUE(all.equal(x,want)),   bn1_arcs[i,]))) {
+      # If it is, delete that arc from both graph
+      bn1 = bnlearn::drop.arc(bn1, bn1_arcs[i,1],bn1_arcs[i,2])
+      bn2 = bnlearn::drop.arc(bn2, bn1_arcs[i,1],bn1_arcs[i,2])
+    }
+  }
+  # Merge the two networks
+  for (i in 1:length(bn2$arcs[,1])) {
+    bn1 = bnlearn::set.arc(bn1,bn2$arcs[i,1],bn2$arcs[i,2])
+  }
+  return(bn1)
+}
 
 
 

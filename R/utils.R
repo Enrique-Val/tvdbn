@@ -62,11 +62,13 @@ graph <- function(tvdbn.fit) {
 }
 
 
-#' @title  Transition network in a time point
+#' @title  Transition network in a time point (TODO)
 #'
 #' @description  Get the transition network of a certain time instant.
 #' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`
-#' @return The structure of the TV-DBN, type = `tvdbn`
+#' @param time The transition network to obtain
+#' @return A transition network with the marginal and conditional probabilities for each node
+#' (at this moment in the implementation, it only return the conditional probabilities)
 #' @import purrr
 #'
 #' @export
@@ -77,6 +79,9 @@ transition_network <- function(tvdbn.fit, time) {
   for (i in variables) {
     prob_list[[time_name(i,time)]] = tvdbn.fit[[time_name(i,time)]]
   }
+  # Next, we compute the marginal probabilities of the parent nodes
+  # TODO
+  # class(prob_list) = c("tvdbn.fit","bn.fit","bn.fit.gnet")
   return(prob_list)
 }
 
@@ -86,19 +91,30 @@ transition_network <- function(tvdbn.fit, time) {
 #' @description  Get the transition network of a certain time instant.
 #' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`.
 #' @param time The transition network to obtain.
+#' @param normalize A flag that indicates if we normalize the time points obtained (starting
+#' from zero) or we leave them as they are.
 #' @return The structure of the transition network of the TV-DBN in
 #' the given time instant.
 #' @import purrr
 #'
 #' @export
-transition_network_graph <- function(tvdbn.fit, time) {
+transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
   variables = get_variables(tvdbn.fit)
-  # First, we store the conditional probabilities of nodes of the transition network
+  # We obtain the variables of the time of our interest
   var_list = unlist(map(variables, time_name, time))
+  # It said time is higher than 0, then we also consider the previous time slice
+  # (just the previous if we assume Markov order 1. In the future, we will expand for
+  # higher Markovian orders)
   if (time > 0) {
     var_list = c(var_list,unlist(map(variables, time_name, time-1)))
   }
-  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list)))
+  # return the subgraph with the nodes of interest (selected and previous time slices)
+  to_ret = tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list))
+  # We might want to normalize the result
+  if (normalize) {
+    to_ret = tvdbn::transition_network_normalize_name(to_ret)
+  }
+  return(to_ret)
 }
 
 
@@ -122,7 +138,7 @@ transition_network_markovian_order <- function(trans_network) {
 #'
 #' @description  Normalize the name of the time variables of a Transition Network.
 #' This allows comparing them using the Hamming distance
-#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn`.
+#' @param trans_network A fitted Time-varying DBN of type `tvdbn`.
 #' @return The transition network with the naming normalized
 #'
 #' @export
@@ -165,17 +181,27 @@ transition_network_normalize_name <- function(trans_network) {
 #'
 #' @description  Get all the transition network structures of the Time-varying DBN
 #' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`.
+#' @param normalize A flag that indicates if we should normalize the time instants in
+#' the obtained transition networks.
 #' @return A list `tvdbn` containing the structure (type `tvdbn`) of all the
 #'  transition networks
 #'
 #' @export
-all_transition_network_graph <- function(tvdbn.fit) {
+all_transition_network_graph <- function(tvdbn.fit, normalize = TRUE) {
   tvdbn = tvdbn::graph(tvdbn.fit)
   tn_list = list()
   time_instants = tvdbn::get_time_points(tvdbn.fit)
-  for (i in 1:(time_instants-1)) {
-    tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn, i))
+  if (normalize) {
+    for (i in 1:(time_instants-1)) {
+      tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn, i))
+    }
   }
+  else {
+    for (i in 1:(time_instants-1)) {
+      tn_list[[i]] = tvdbn::transition_network_graph(tvdbn, i)
+    }
+  }
+
   return(tn_list)
 }
 
