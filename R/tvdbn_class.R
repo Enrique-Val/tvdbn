@@ -52,7 +52,7 @@ bn_to_tvdbn <- function(bn) {
 #' @export
 get_time_points <- function(tvdbn) {
   if (class(tvdbn)[1] == "tvdbn.fit") {
-    first_var = remove_time_name(nodes(tvdbn)[1])[1]
+    first_var = remove_time_name(tvdbn::nodes(tvdbn)[1])[1]
     time_points = 0
     for (i in sort(nodes(tvdbn))) {
       if (first_var == remove_time_name(i)[1]) {
@@ -65,10 +65,10 @@ get_time_points <- function(tvdbn) {
   }
 
   else if (class(tvdbn)[1] == "tvdbn") {
-    first_var = remove_time_name(names(tvdbn$nodes)[1])[1]
+    first_var = tvdbn::remove_time_name(names(tvdbn$nodes)[1])[1]
     time_points = 0
     for (i in sort(names(tvdbn$nodes))) {
-      if (first_var == remove_time_name(i)[1]) {
+      if (first_var == tvdbn::remove_time_name(i)[1]) {
         time_points = time_points+1
       }
       else {

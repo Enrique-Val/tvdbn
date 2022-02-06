@@ -12,13 +12,6 @@ library(dbnR)
 #' @param structure the structure or fit of the network.
 #' @param offset the blank space between time slices
 #' @return the visualization of the DBN
-#' @examples
-#' \donttest{
-#' size = 3
-#' dt_train <- dbnR::motor[200:2500]
-#' net <- learn_dbn_struc(dt_train, size)
-#' plot_dynamic_network(net)
-#' }
 #' @import dbnR
 #' @export
 plot_time_varying_network <- function(structure, offset = 200){

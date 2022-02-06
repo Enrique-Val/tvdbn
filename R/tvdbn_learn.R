@@ -228,8 +228,8 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
 learn_tvdbn_structure <- function(A) {
   string_model = ""
   # Variables in the first time instant
-  for (i in dimnames(x)[[2]]) {
-    string_model = paste(string_model,"[",time_name(i,0),"]",sep="")
+  for (i in dimnames(A[[1]])[[2]]) {
+    string_model = paste(string_model,"[",i,"]",sep="")
   }
   for (t in 1:(length(A))) {
     A.t = A[[t]]
@@ -249,15 +249,15 @@ learn_tvdbn_structure <- function(A) {
   }
   print(string_model)
   dag <-model2network(string_model)
-  return(bn_to_tvdbn(dag))
+  return(tvdbn::bn_to_tvdbn(dag))
 }
 
 
 
 learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   distribution_list = list()
-  for (i in 1:length(dimnames(x)[[2]])) {
-    distribution_list[[time_name(dimnames(x)[[2]][i],0)]] = list(coef = c("(Intercept)"=intercept[[1]][i]), sd = sd[[1]][i])
+  for (i in 1:length(dimnames(A[[1]])[[2]])) {
+    distribution_list[[dimnames(A[[1]])[[2]][i]]] = list(coef = c("(Intercept)"=intercept[[1]][i]), sd = sd[[1]][i])
   }
 
   for (t in 1:(length(A))) {

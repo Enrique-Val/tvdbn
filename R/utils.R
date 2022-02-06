@@ -32,6 +32,18 @@ remove_time_name <- function(time_name) {
   return(c(var_name,time))
 }
 
+#' @title  Nodes of a Time-varying DBN
+#'
+#' @description  Get the nodes of a time-varying DBN
+#' @param tvdbn A TV-DBN, fitted or just the structure
+#' @return The nodes of the network
+#'
+#' @export
+nodes <- function(tvdbn) {
+  class(tvdbn) = class(tvdbn)[-1]
+  return(bnlearn::nodes(tvdbn))
+}
+
 
 
 
@@ -58,7 +70,7 @@ subgraph <- function(tvdbn.fit, nodes) {
 #'
 #' @export
 graph <- function(tvdbn.fit) {
-  return(subgraph(tvdbn.fit = tvdbn.fit, nodes = bnlearn::nodes(tvdbn.fit)))
+  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = nodes(tvdbn.fit)))
 }
 
 
@@ -158,8 +170,8 @@ transition_network_normalize_name <- function(trans_network) {
 
 
   # Number of variables
-  n_vars = length(nodes(trans_network))/(order+1)
-  time_nodes = nodes(trans_network)
+  n_vars = length(bnlearn::nodes(trans_network))/(order+1)
+  time_nodes = bnlearn::nodes(trans_network)
 
   for (i in 1:(order+1)) {
     old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
@@ -168,7 +180,7 @@ transition_network_normalize_name <- function(trans_network) {
       old_name = time_nodes[i+j*(order+1)]
       decomposed_name = remove_time_name(old_name)
       new_name = time_name(decomposed_name[1],new_tp)
-      nodes(trans_network)[i+j*(order+1)] = new_name
+      bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
     }
   }
 

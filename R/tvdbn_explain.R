@@ -40,7 +40,7 @@ hamming_changes <- function(tvdbn.fit, time = NULL) {
 #' @return The global graph of the two input Bayesian networks
 #'
 #' @export
-global_graph_2g <- function(bn1, bn2, time = NULL) {
+global_graph_2g <- function(bn1, bn2) {
   # Convert to bn if the input object is type bn.fit
   if (any(class(bn1) == "bn.fit")) {
     bn1 = tvdbn::graph(bn1)
@@ -70,15 +70,25 @@ global_graph_2g <- function(bn1, bn2, time = NULL) {
 #' @return A (transition) Bayesian network, the global graph of the input networks
 #'
 #' @export
-global_graph <- function(tvdbn) {
+global_graph <- function(tvdbn, t_0 = NULL, t_f = NULL) {
   bn_list = tvdbn
   # If the input is a TV-DBN, we have to separate the transition networks
   if (any(class(tvdbn) == "tvdbn") || any(class(tvdbn) == "tvdbn.fit")) {
-    bn_list = tvdbn::all_transition_network_graph(tvdbn)
+    if (is.null(t_0)) {
+      t_0 = 1
+    }
+    if (is.null(t_f)) {
+      t_f = tvdbn::get_time_points(tvdbn)
+    }
+    bn_list = tvdbn::all_transition_network_graph(tvdbn)[t_0:(t_f-1)]
   }
   global_graph = bn_list[[1]]
   for (i in 2:length(bn_list)) {
     global_graph = tvdbn::global_graph_2g(global_graph, bn_list[[i]])
+    if (is_empty(global_graph$arcs)) {
+      print(paste("Warning: From intial time ",t_0," to time ",i+1,", no persistent arc was found. Specify a lower time interval",sep=""))
+      break
+    }
   }
   return(global_graph)
 }
@@ -96,7 +106,7 @@ global_graph <- function(tvdbn) {
 #' @return The Hamming graph of the two input Bayesian networks
 #'
 #' @export
-hamming_graph_2g <- function(bn1, bn2, time = NULL) {
+hamming_graph_2g <- function(bn1, bn2) {
   # Convert to bn if the input object is type bn.fit
   if (any(class(bn1) == "bn.fit")) {
     bn1 = tvdbn::graph(bn1)
