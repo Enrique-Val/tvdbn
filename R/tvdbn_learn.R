@@ -61,7 +61,7 @@ weight_causal_time_series <- function(t_star, dataset_length) {
   return(tmp)
 }
 
-learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
+learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
   print(length(x[,1]))
   print(nrow(x))
   start.time <- Sys.time()
@@ -73,7 +73,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   sd_b = c()
 
   # Find the marginal distributions of the elements of the first time point
-  weights_t0 = weight_time_series(1,nrow(x))
+  weights_t0 = weight_time_series(1,nrow(x), kernel_bandwidth)
   mean_t0 = c()
   sd_t0 = c()
   for (i in 1:ncol(x)) {
@@ -86,9 +86,9 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
   intercept[[1]] = mean_t0
   sd[[1]] = sd_t0
   for (t_star in 2:nrow(x)) {
-    A[[t_star-1]] = matrix(nrow = length(x[1,]), ncol = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1), map(dimnames(x)[[2]],time_name,t_star-2)))
-    intercept[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
-    sd[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1)))
+    A[[t_star-1]] = matrix(nrow = length(x[1,]), ncol = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1, length(x[,1])), map(dimnames(x)[[2]],time_name,t_star-2, length(x[,1]))))
+    intercept[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1, length(x[,1]))))
+    sd[[t_star]] = matrix(nrow = length(x[1,]), dimnames = list(map(dimnames(x)[[2]],time_name,t_star-1, length(x[,1]))))
   }
 
   # Process the blacklist
@@ -162,7 +162,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
       }
       else {
         #Reweight time series
-        weights = weight_time_series(t_star, ts_length)
+        weights = weight_time_series(t_star, ts_length, kernel_bandwidth)
         weights = weights[2:ts_length]
         y_i_t = x[2:length(x[,1]),i]
         x_i_t = x[1:(length(x[,1])-1),]
@@ -175,6 +175,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", blacklist = list(), wh
         sd[[t_star]][i] = sd[[t_star-1]][i]
       }
       else {
+        set.seed(0)
         cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
                           exclude = blacklist_processed[[i]], penalty.factor = whitelist_processed[i,],
                           nfolds = 3, dfmax = max_parents)
@@ -287,8 +288,8 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   return (tvd_bayesian_network)
 }
 
-learn_tvdbn <- function(x, type = "relaxed", blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
-  ret = learn_tvdbn_coefficients(x, type = type, blacklist = blacklist,
+learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
+  ret = learn_tvdbn_coefficients(x, type = type, kernel_bandwidth = kernel_bandwidth, blacklist = blacklist,
                                  whitelist = whitelist, max_parents = max_parents)
   A = ret[["A"]]
   intercept = ret[["intercept"]]

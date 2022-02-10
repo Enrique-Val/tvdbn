@@ -15,6 +15,7 @@ library(dbnR)
 #' @import dbnR
 #' @export
 plot_time_varying_network <- function(structure, offset = 200){
+  structure = remove_zeros(structure)
   if (class(structure)[1] == "tvdbn.fit") {
     class(structure)[1] = "dbn.fit"
   }

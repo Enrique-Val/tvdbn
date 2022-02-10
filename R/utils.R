@@ -7,7 +7,26 @@
 #' @return The name of the variable with the time point correctly appended.
 #'
 #' @export
-time_name <- function(name, t) {
+time_name <- function(name, t, len = NULL) {
+  if (! is.null(len)) {
+    # Type checking
+    assertthat::assert_that(is.numeric(len))
+    assertthat::assert_that(len > t)
+    assertthat::assert_that(t >= 0)
+    # Compute the number of zeros to append. be careful if t=0
+    zeros = 0
+    if (t == 0) {
+      zeros = trunc(log10(len))
+    }
+    else {
+      zeros = trunc(log10(len)) - trunc(log10(t))
+    }
+    if (zeros > 0) {
+      for (i in 1:zeros) {
+        t = paste(0,t,sep="")
+      }
+    }
+  }
   return(paste(name,t,sep="_t_"))
 }
 
@@ -89,7 +108,7 @@ transition_network <- function(tvdbn.fit, time) {
   # First, we store the conditional probabilities of nodes of the transition network
   prob_list = list()
   for (i in variables) {
-    prob_list[[time_name(i,time)]] = tvdbn.fit[[time_name(i,time)]]
+    prob_list[[time_name(i,time, get_time_points(tvdbn.fit))]] = tvdbn.fit[[time_name(i,time,get_time_points(tvdbn.fit))]]
   }
   # Next, we compute the marginal probabilities of the parent nodes
   # TODO
@@ -113,12 +132,12 @@ transition_network <- function(tvdbn.fit, time) {
 transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
   variables = get_variables(tvdbn.fit)
   # We obtain the variables of the time of our interest
-  var_list = unlist(map(variables, time_name, time))
+  var_list = unlist(map(variables, time_name, time, get_time_points(tvdbn.fit)))
   # It said time is higher than 0, then we also consider the previous time slice
   # (just the previous if we assume Markov order 1. In the future, we will expand for
   # higher Markovian orders)
   if (time > 0) {
-    var_list = c(var_list,unlist(map(variables, time_name, time-1)))
+    var_list = c(var_list,unlist(map(variables, time_name, time-1, get_time_points(tvdbn.fit))))
   }
   # return the subgraph with the nodes of interest (selected and previous time slices)
   to_ret = tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list))
@@ -141,6 +160,8 @@ transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
 #' @export
 transition_network_markovian_order <- function(trans_network) {
   # Get the Markovian Order of the Transition Network
+  # For the time being, it does exactly the same thing as the function "get_time_points", as we
+  # are only considering first Markov order relations
   order = length(trans_network$nodes)/length(get_variables(trans_network)) -1
   return(order)
 }
@@ -155,38 +176,7 @@ transition_network_markovian_order <- function(trans_network) {
 #'
 #' @export
 transition_network_normalize_name <- function(trans_network) {
-  # Get the Markovian Order of the Transition Network
-  order = transition_network_markovian_order(trans_network)
-  time_points = c()
-  sorted_list = sort(names(trans_network$nodes))
-  for (i in sorted_list[1:(order+1)]) {
-    time_points = c(time_points,as.numeric(remove_time_name(i)[2]))
-  }
-  time_points = sort(time_points)
-
-  # bnlearn has a bug and does not let us use the function nodes with inherited class
-  # We cast to class "bn" and later we will revert this change
-  class(trans_network) = "bn"
-
-
-  # Number of variables
-  n_vars = length(bnlearn::nodes(trans_network))/(order+1)
-  time_nodes = bnlearn::nodes(trans_network)
-
-  for (i in 1:(order+1)) {
-    old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
-    new_tp = match(old_tp, time_points)-1
-    for (j in 1:n_vars-1) {
-      old_name = time_nodes[i+j*(order+1)]
-      decomposed_name = remove_time_name(old_name)
-      new_name = time_name(decomposed_name[1],new_tp)
-      bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
-    }
-  }
-
-  class(trans_network) = c("tvdbn",class(trans_network))
-  return(trans_network)
-
+  return(tvdbn::change_time(trans_network, ini = 0))
 }
 
 #' @title  List of the structure of all the transition networks
@@ -218,3 +208,118 @@ all_transition_network_graph <- function(tvdbn.fit, normalize = TRUE) {
 }
 
 
+#' @title  List of the structure of all the transition networks
+#'
+#' @description  Get all the transition network structures of the Time-varying DBN
+#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`.
+#' @param normalize A flag that indicates if we should normalize the time instants in
+#' the obtained transition networks.
+#' @return A list `tvdbn` containing the structure (type `tvdbn`) of all the
+#'  transition networks
+#'
+#' @export
+append_networks <- function(tvdbn1, tvdbn2) {
+  # This function assumes 1st Markovian order. We might expand it in the future
+  # The function when the input are two graphs (networks with no parameters)
+  if ("tvdbn" %in% class(tvdbn1) && "tvdbn" %in% class(tvdbn2)) {
+    # First, we normalize the time names
+    tvdbn1 = transition_network_normalize_name(tvdbn1)
+    tvdbn2 = transition_network_normalize_name(tvdbn2)
+
+  }
+
+}
+
+
+
+#' @title Change the initial time of a TV-DBN
+#'
+#' @description  Change the initial time of a TV-DBN. Be EXTREMELY careful, as the function may interfere
+#' with other functionality, such as visualization. The best choice is to always have a normalized TV-DBN
+#' (starting at time 0)
+#' @param trans_network A Time-varying DBN structure of type `tvdbn`.
+#' @return The TV-DBN with the time points shifted
+#'
+#' @export
+change_time <- function(trans_network, ini = 0) {
+  # Get the Markovian Order of the tvdbn
+  order = transition_network_markovian_order(trans_network)
+  # Time points is a list with all the time instant of the transition. For instance, it may range from 3 to 5 (second Markovian order)
+  time_points = c()
+  sorted_list = sort(names(trans_network$nodes))
+  for (i in sorted_list[1:(order+1)]) {
+    time_points = c(time_points,as.numeric(remove_time_name(i)[2]))
+  }
+  time_points = sort(time_points)
+  # bnlearn has a bug and does not let us use the function nodes with inherited class
+  # We cast to class "bn" and later we will revert this change
+  class(trans_network) = "bn"
+
+
+  # Number of variables
+  n_vars = length(bnlearn::nodes(trans_network))/(order+1)
+  time_nodes = bnlearn::nodes(trans_network)
+
+  if (ini > time_points[1]) {
+    for (i in (order+1):1) {
+      # Get the old time instant
+      old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
+      # Build the new time instant
+      new_tp = match(old_tp, time_points)-1
+      for (j in n_vars:1-1) {
+        old_name = time_nodes[i+j*(order+1)]
+        decomposed_name = remove_time_name(old_name)
+        new_name = time_name(decomposed_name[1],new_tp+ini, len = order+1+ini)
+        bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
+      }
+    }
+  }
+  else {
+    for (i in 1:(order+1)) {
+      # Get the old time instant
+      old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
+      # Build the new time instant
+      new_tp = match(old_tp, time_points)-1
+      for (j in 1:n_vars-1) {
+        old_name = time_nodes[i+j*(order+1)]
+        decomposed_name = remove_time_name(old_name)
+        new_name = time_name(decomposed_name[1],new_tp+ini, len = order+1+ini)
+        bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
+      }
+    }
+  }
+
+  class(trans_network) = c("tvdbn",class(trans_network))
+  return(trans_network)
+
+}
+
+remove_zeros <- function(tvdbn) {
+  tmp = class(tvdbn)
+  class(tvdbn) = "bn"
+  for (i in bnlearn::nodes(tvdbn)) {
+    name = remove_time_name(i)
+    bnlearn::nodes(tvdbn)[match(i,bnlearn::nodes(tvdbn))] = time_name(name[1],as.integer(name[2]))
+    print(time_name(name[1],as.integer(name[2])))
+  }
+  class(tvdbn) = tmp
+  return(tvdbn)
+}
+
+remove.node <- function(x,node) {
+  assertthat::assert_that("tvdbn" %in% class(x) || "tvdbn.fit" %in% class(x))
+  tmp = NULL
+  if ("tvdbn" %in% class(x)) {
+    assertthat::assert_that("bn" %in% class(x))
+    tmp = class(x)
+    class(x) = "bn"
+  }
+  else if ("tvdbn.fit" %in% class(x)) {
+    assertthat::assert_that("bn.fit" %in% class(x))
+    tmp = class(x)
+    class(x) = "bn.fit"
+  }
+  x = bnlearn::remove.node(x,node)
+  class(x) = tmp
+  return(x)
+}

@@ -134,3 +134,5 @@ hamming_graph_2g <- function(bn1, bn2) {
 
 
 
+
+
