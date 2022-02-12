@@ -48,6 +48,14 @@ global_graph_2g <- function(bn1, bn2) {
   if (any(class(bn2) == "bn.fit")) {
     bn2 = tvdbn::graph(bn2)
   }
+
+  if (length(bn1$arcs) == 0) {
+    return(bn1)
+  }
+  if (length(bn2$arcs) == 0) {
+    return(bn2)
+  }
+
   global_graph = bn1
   for (i in 1:length(bn1$arcs[,1])) {
     #Check if the arcs is in the other network bn2
@@ -85,10 +93,10 @@ global_graph <- function(tvdbn, t_0 = NULL, t_f = NULL) {
   global_graph = bn_list[[1]]
   for (i in 2:length(bn_list)) {
     global_graph = tvdbn::global_graph_2g(global_graph, bn_list[[i]])
-    if (is_empty(global_graph$arcs)) {
-      print(paste("Warning: From intial time ",t_0," to time ",i+1,", no persistent arc was found. Specify a lower time interval",sep=""))
-      break
-    }
+    #if (is_empty(global_graph$arcs)) {
+      #print(paste("Warning: From intial time ",t_0," to time ",i+1,", no persistent arc was found. Specify a lower time interval",sep=""))
+     #break
+    #}
   }
   return(global_graph)
 }
@@ -131,6 +139,36 @@ hamming_graph_2g <- function(bn1, bn2) {
   return(bn1)
 }
 
+
+
+
+
+summary_network <- function(tvdbn, frequency) {
+  assertthat::assert_that("tvdbn" %in% class(tvdbn) || "tvdbn.fit" %in% class(tvdbn))
+  assertthat::assert_that(frequency > 1)
+  assertthat::assert_that(get_time_points(tvdbn)+1 > frequency)
+  if ("tvdbn.fit" %in% class(tvdbn)) {
+    tvdbn = graph(tvdbn)
+  }
+  gg = list()
+  tns = all_transition_network_graph(tvdbn)
+  for (i in 1:(length(tns)%/%frequency)) {
+    index = as.character(i)
+    print(class(global_graph(tns[(1+(i-1)*frequency):(i*frequency)])))
+    gg[[i]] = global_graph(tns[(1+(i-1)*frequency):(i*frequency)])
+  }
+  if (length(tns) %% frequency != 0) {
+    gg[[round(length(tns)/frequency)]] =global_graph(tns[(1+length(tns)-(length(tns) %% frequency)):length(tns)])
+  }
+  print(length(gg))
+  summary = gg[[1]]
+  for (i in 2:length(gg)) {
+    print(class(gg[[i]]))
+    summary = append_networks(summary, gg[[i]])
+  }
+
+  return(summary)
+}
 
 
 

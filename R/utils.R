@@ -143,7 +143,7 @@ transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
   to_ret = tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list))
   # We might want to normalize the result
   if (normalize) {
-    to_ret = tvdbn::transition_network_normalize_name(to_ret)
+    to_ret = tvdbn::normalize_time(to_ret)
   }
   return(to_ret)
 }
@@ -175,7 +175,7 @@ transition_network_markovian_order <- function(trans_network) {
 #' @return The transition network with the naming normalized
 #'
 #' @export
-transition_network_normalize_name <- function(trans_network) {
+normalize_time <- function(trans_network) {
   return(tvdbn::change_time(trans_network, ini = 0))
 }
 
@@ -195,7 +195,7 @@ all_transition_network_graph <- function(tvdbn.fit, normalize = TRUE) {
   time_instants = tvdbn::get_time_points(tvdbn.fit)
   if (normalize) {
     for (i in 1:(time_instants-1)) {
-      tn_list[[i]] = tvdbn::transition_network_normalize_name(tvdbn::transition_network_graph(tvdbn, i))
+      tn_list[[i]] = tvdbn::normalize_time(tvdbn::transition_network_graph(tvdbn, i))
     }
   }
   else {
@@ -219,14 +219,32 @@ all_transition_network_graph <- function(tvdbn.fit, normalize = TRUE) {
 #'
 #' @export
 append_networks <- function(tvdbn1, tvdbn2) {
-  # This function assumes 1st Markovian order. We might expand it in the future
-  # The function when the input are two graphs (networks with no parameters)
-  if ("tvdbn" %in% class(tvdbn1) && "tvdbn" %in% class(tvdbn2)) {
-    # First, we normalize the time names
-    tvdbn1 = transition_network_normalize_name(tvdbn1)
-    tvdbn2 = transition_network_normalize_name(tvdbn2)
+  assertthat::assert_that("tvdbn" %in% class(tvdbn1) && "tvdbn" %in% class(tvdbn2))
+  # First, we normalize the time names
+  tvdbn1 = normalize_time(tvdbn1)
+  tvdbn2 = change_time(tvdbn2, ini = get_time_points(tvdbn1)-1)
 
+  tvdbn2_nodes_toadd = nodes(tvdbn2)
+  to_del = c()
+
+  # Eliminate from the list of nodes of tvdbn2 all the nodes of the first time point
+  for (i in 1:length(get_variables(tvdbn2))-1) {
+    to_del = c(to_del,nodes(tvdbn2)[1+i*get_time_points(tvdbn2)])
   }
+  tvdbn2_nodes_toadd = tvdbn2_nodes_toadd[ ! tvdbn2_nodes_toadd %in% to_del]
+
+  ## Add all the nodes and arcs of tvdbn2 to tvdbn1
+  for (i in tvdbn2_nodes_toadd) {
+    tvdbn1 = add.node(tvdbn1, i)
+  }
+
+  if (length(tvdbn2$arcs[,1]) > 0) {
+    for (i in 1:length(tvdbn2$arcs[,1])) {
+      tvdbn1 = bnlearn::set.arc(tvdbn1, tvdbn2$arcs[i,1], tvdbn2$arcs[i,2])
+    }
+  }
+
+  return(tvdbn1)
 
 }
 
@@ -242,12 +260,12 @@ append_networks <- function(tvdbn1, tvdbn2) {
 #'
 #' @export
 change_time <- function(trans_network, ini = 0) {
-  # Get the Markovian Order of the tvdbn
-  order = transition_network_markovian_order(trans_network)
-  # Time points is a list with all the time instant of the transition. For instance, it may range from 3 to 5 (second Markovian order)
+  # Get the number of time instants of the network
+  n_time_points = get_time_points(trans_network)
+  # Time points is a list with all the time instant of the transition. For instance, it may range from 3 to 5
   time_points = c()
   sorted_list = sort(names(trans_network$nodes))
-  for (i in sorted_list[1:(order+1)]) {
+  for (i in sorted_list[1:(n_time_points)]) {
     time_points = c(time_points,as.numeric(remove_time_name(i)[2]))
   }
   time_points = sort(time_points)
@@ -257,37 +275,21 @@ change_time <- function(trans_network, ini = 0) {
 
 
   # Number of variables
-  n_vars = length(bnlearn::nodes(trans_network))/(order+1)
+  n_vars = length(bnlearn::nodes(trans_network))/(n_time_points)
   time_nodes = bnlearn::nodes(trans_network)
+  new_nodes = c()
 
-  if (ini > time_points[1]) {
-    for (i in (order+1):1) {
-      # Get the old time instant
-      old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
-      # Build the new time instant
-      new_tp = match(old_tp, time_points)-1
-      for (j in n_vars:1-1) {
-        old_name = time_nodes[i+j*(order+1)]
-        decomposed_name = remove_time_name(old_name)
-        new_name = time_name(decomposed_name[1],new_tp+ini, len = order+1+ini)
-        bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
-      }
-    }
+  for (i in time_nodes) {
+    # Get the old time instant
+    decomposed = remove_time_name(i)
+    old_tp = as.numeric(decomposed[2])
+    # Build the new time instant
+    new_tp = match(old_tp, time_points)-1
+    var_name = decomposed[1]
+    new_name = time_name(var_name,new_tp+ini, len = n_time_points+ini)
+    new_nodes = c(new_nodes, new_name)
   }
-  else {
-    for (i in 1:(order+1)) {
-      # Get the old time instant
-      old_tp = as.numeric(remove_time_name(time_nodes[i])[2])
-      # Build the new time instant
-      new_tp = match(old_tp, time_points)-1
-      for (j in 1:n_vars-1) {
-        old_name = time_nodes[i+j*(order+1)]
-        decomposed_name = remove_time_name(old_name)
-        new_name = time_name(decomposed_name[1],new_tp+ini, len = order+1+ini)
-        bnlearn::nodes(trans_network)[i+j*(order+1)] = new_name
-      }
-    }
-  }
+  trans_network = bnlearn::rename.nodes(trans_network, new_nodes)
 
   class(trans_network) = c("tvdbn",class(trans_network))
   return(trans_network)
@@ -312,14 +314,16 @@ remove.node <- function(x,node) {
   if ("tvdbn" %in% class(x)) {
     assertthat::assert_that("bn" %in% class(x))
     tmp = class(x)
-    class(x) = "bn"
   }
   else if ("tvdbn.fit" %in% class(x)) {
     assertthat::assert_that("bn.fit" %in% class(x))
     tmp = class(x)
-    class(x) = "bn.fit"
   }
   x = bnlearn::remove.node(x,node)
   class(x) = tmp
   return(x)
+}
+
+sort_nodes <- function(nodes, order = "variable") {
+
 }

@@ -51,29 +51,18 @@ bn_to_tvdbn <- function(bn) {
 #' @import bnlearn
 #' @export
 get_time_points <- function(tvdbn) {
-  if (class(tvdbn)[1] == "tvdbn.fit") {
-    first_var = remove_time_name(tvdbn::nodes(tvdbn)[1])[1]
-    time_points = 0
-    for (i in sort(nodes(tvdbn))) {
-      if (first_var == remove_time_name(i)[1]) {
-        time_points = time_points+1
-      }
-      else {
-        return(time_points)
-      }
-    }
-  }
+  assertthat::assert_that(any(class(tvdbn) == "tvdbn") || any(class(tvdbn) == "tvdbn.fit"))
 
-  else if (class(tvdbn)[1] == "tvdbn") {
-    first_var = tvdbn::remove_time_name(names(tvdbn$nodes)[1])[1]
-    time_points = 0
-    for (i in sort(names(tvdbn$nodes))) {
-      if (first_var == tvdbn::remove_time_name(i)[1]) {
-        time_points = time_points+1
-      }
-      else {
-        return(time_points)
-      }
+  nodes_tvdbn = sort(nodes(tvdbn))
+  first_var = remove_time_name(nodes_tvdbn[1])[1]
+  time_points = 0
+
+  for (i in nodes_tvdbn) {
+    if (first_var == remove_time_name(i)[1]) {
+      time_points = time_points+1
+    }
+    else {
+      return(time_points)
     }
   }
 }
@@ -90,14 +79,7 @@ get_time_points <- function(tvdbn) {
 #' @export
 get_variables <- function(tvdbn) {
   time_instants = get_time_points(tvdbn)
-  node_vector = NULL
-  if (class(tvdbn)[1] == "tvdbn.fit") {
-    node_vector = names(tvdbn)
-  }
-
-  else if (class(tvdbn)[1] == "tvdbn") {
-    node_vector = names(tvdbn$nodes)
-  }
+  node_vector = sort(nodes(tvdbn))
 
   variable_vector = c()
   i = 1
