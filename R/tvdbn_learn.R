@@ -66,20 +66,30 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   A = list()
   intercept = list()
   sd = list()
-  ts_length = nrow(x) # Number of time points in the series
-  variables = variable.names(x) # List of the variables of the time series
+  if (length(dim(x)) == 2) {
+    # A single time series was input
+    x = array(x,dim = c(nrow(x),ncol(x),1), dimnames = list(NULL, colnames(x), NULL))
+  }
+  n_time_series = length(x[1,1,])
+  ts_length = nrow(x[,,1]) # Number of time points in the series
+  variables = colnames(x[,,1]) # List of the variables of the time series
   n_variables = length(variables) # Number of variables of the series
   previous_lambda = list()
   sd_cv = c()
   sd_b = c()
 
   # Find the marginal distributions of the elements of the first time point
-  weights_t0 = weight_time_series(1,ts_length, kernel_bandwidth)
+  weights_t0 = c()
+  for (i in 1:n_time_series){
+    weights_t0 = c(weights_t0,weight_time_series(1,ts_length, kernel_bandwidth))
+  }
   mean_t0 = c()
   sd_t0 = c()
+  x_2d = aperm(x,c(1,3,2))
+  dim(x_2d)<- c(ts_length*n_time_series, n_variables)
   for (i in 1:n_variables) {
-    mean_t0_i = sum(weights_t0*x[,i])/sum(weights_t0)
-    sd_t0_i = sum(abs(mean_t0_i-x[,i])*weights_t0)/sum(weights_t0)
+    mean_t0_i = sum(weights_t0*x_2d[,i])/sum(weights_t0)
+    sd_t0_i = sum(abs(mean_t0_i-x_2d[,i])*weights_t0)/sum(weights_t0)
     mean_t0 = c(mean_t0, mean_t0_i)
     sd_t0 = c(sd_t0, sd_t0_i)
   }
@@ -100,29 +110,29 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   print(blacklist_processed)
 
   for (forbidden_arc in blacklist) {
-    i = match(forbidden_arc[1], colnames(x))
-    j = match(forbidden_arc[2], colnames(x))
+    i = match(forbidden_arc[1], variables)
+    j = match(forbidden_arc[2], variables)
     blacklist_processed[[j]] = c(blacklist_processed[[j]],i)
   }
 
   #Process the whitelist
   # Process the blacklist
-  whitelist_processed = matrix(data=1, nrow = n_variables, ncol = n_variables, dimnames=list(dimnames(x)[[2]],dimnames(x)[[2]]))
+  whitelist_processed = matrix(data=1, nrow = n_variables, ncol = n_variables, dimnames=list(variables,variables))
 
 
   print(whitelist_processed)
 
   for (mandatory_arc in whitelist) {
-    i = match(mandatory_arc[1], colnames(x))
-    j = match(mandatory_arc[2], colnames(x))
+    i = match(mandatory_arc[1], variables)
+    j = match(mandatory_arc[2], variables)
     whitelist_processed[j,i] = 0
   }
 
   # Check for other arcs restrictions
   # In the original article, there cannot be arcs between the same variable in different time points.
   if (type == "original") {
-    for (name_i in colnames(x)) {
-      i = match(name_i, colnames(x))
+    for (name_i in variables) {
+      i = match(name_i, variables)
       if (!(i %in% blacklist_processed[[i]])) {
         blacklist_processed[[i]] = c(blacklist_processed[[i]],i)
       }
@@ -131,7 +141,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
 
   # If autoregressive is selected, the model forces x_t-1 as the parent of x_t (opposite of "original")
   else if (type == "autoregressive") {
-    for (i in colnames(x)) {
+    for (i in variables) {
       whitelist_processed[i,i] = 0
     }
   }
@@ -163,10 +173,15 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
       }
       else {
         #Reweight time series
-        weights = weight_tnime_series(t_star, ts_length, kernel_bandwidth)
-        weights = weights[2:ts_length]
-        y_i_t = x[2:ts_length,i]
-        x_i_t = x[1:(ts_length-1),]
+        for (ts in 1:n_time_series) {
+          weights_ts = weight_time_series(t_star, ts_length, kernel_bandwidth)
+          weights = c(weights, weights_ts[2:ts_length])
+          y_i_t = c(y_i_t, x[2:ts_length,i,ts])
+          x_i_t = rbind(x_i_t, x[1:(ts_length-1),,ts])
+        }
+        #y_i_t = as.matrix(y_i_t)
+        #x_i_t = as.matrix(x_i_t)
+
       }
       # L1-regression
       cvfit = NULL
@@ -284,7 +299,7 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   return (tvd_bayesian_network)
 }
 
-learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = n_variables) {
+learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
   ret = learn_tvdbn_coefficients(x, type = type, kernel_bandwidth = kernel_bandwidth, blacklist = blacklist,
                                  whitelist = whitelist, max_parents = max_parents)
   A = ret[["A"]]

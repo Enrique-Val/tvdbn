@@ -11,7 +11,7 @@ time_name <- function(name, t, len = NULL) {
   if (! is.null(len)) {
     # Type checking
     assertthat::assert_that(is.numeric(len))
-    assertthat::assert_that(len > t)
+    assertthat::assert_that(len >= t)
     assertthat::assert_that(t >= 0)
     # Compute the number of zeros to append. be careful if t=0
     zeros = 0
@@ -132,12 +132,23 @@ transition_network <- function(tvdbn.fit, time) {
 transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
   variables = get_variables(tvdbn.fit)
   # We obtain the variables of the time of our interest
-  var_list = unlist(map(variables, time_name, time, get_time_points(tvdbn.fit)))
+  var_list = NULL
+  if (has_zeros(tvdbn.fit)) {
+    var_list = unlist(map(variables, time_name, time, get_time_points(tvdbn.fit)-1))
+  }
+  else {
+    var_list = unlist(map(variables, time_name, time))
+  }
   # It said time is higher than 0, then we also consider the previous time slice
   # (just the previous if we assume Markov order 1. In the future, we will expand for
   # higher Markovian orders)
   if (time > 0) {
-    var_list = c(var_list,unlist(map(variables, time_name, time-1, get_time_points(tvdbn.fit))))
+    if (has_zeros(tvdbn.fit)) {
+      var_list = c(var_list,unlist(map(variables, time_name, time-1, get_time_points(tvdbn.fit)-1)))
+    }
+    else {
+      var_list = c(var_list,unlist(map(variables, time_name, time-1)))
+    }
   }
   # return the subgraph with the nodes of interest (selected and previous time slices)
   to_ret = tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list))
@@ -286,7 +297,7 @@ change_time <- function(trans_network, ini = 0) {
     # Build the new time instant
     new_tp = match(old_tp, time_points)-1
     var_name = decomposed[1]
-    new_name = time_name(var_name,new_tp+ini, len = n_time_points+ini)
+    new_name = time_name(var_name,new_tp+ini) #, len = n_time_points+ini-1
     new_nodes = c(new_nodes, new_name)
   }
   trans_network = bnlearn::rename.nodes(trans_network, new_nodes)
@@ -298,11 +309,24 @@ change_time <- function(trans_network, ini = 0) {
 
 remove_zeros <- function(tvdbn) {
   tmp = class(tvdbn)
+  class(tvdbn) = class(tvdbn)[-1]
+  new_nodes = c()
+  for (i in bnlearn::nodes(tvdbn)) {
+    name = remove_time_name(i)
+    new_nodes = c(new_nodes,time_name(name[1],as.integer(name[2])))
+  }
+  tvdbn = bnlearn::rename.nodes(tvdbn, new_nodes)
+  class(tvdbn) = tmp
+  return(tvdbn)
+}
+
+add_zeros <- function(tvdbn) {
+  len = get_time_points(tvdbn)
+  tmp = class(tvdbn)
   class(tvdbn) = "bn"
   for (i in bnlearn::nodes(tvdbn)) {
     name = remove_time_name(i)
-    bnlearn::nodes(tvdbn)[match(i,bnlearn::nodes(tvdbn))] = time_name(name[1],as.integer(name[2]))
-    print(time_name(name[1],as.integer(name[2])))
+    bnlearn::nodes(tvdbn)[match(i,bnlearn::nodes(tvdbn))] = time_name(name[1],as.integer(name[2]), len)
   }
   class(tvdbn) = tmp
   return(tvdbn)
@@ -324,6 +348,28 @@ remove.node <- function(x,node) {
   return(x)
 }
 
-sort_nodes <- function(nodes, order = "variable") {
-
+has_zeros <- function(tvdbn) {
+  assertthat::assert_that("tvdbn" %in% class(tvdbn) || "tvdbn.fit" %in% class(tvdbn))
+  first_node = sort(nodes(tvdbn))[1]
+  if (nchar(remove_time_name(first_node)[2]) > 1) {
+    return(TRUE)
+  }
+  return(FALSE)
 }
+
+sort_nodes <- function(nodes, order = "name") {
+  if(order == "name") {
+    nodes = nodes[order(as.integer(sapply(nodes, remove_time_name)[2,]))]
+    nodes = nodes[order(sapply(nodes, remove_time_name)[1,])]
+  }
+  else if (order == "time") {
+    nodes = nodes[order(sapply(nodes, remove_time_name)[1,])]
+    nodes = nodes[order(as.integer(sapply(nodes, remove_time_name)[2,]))]
+  }
+  else {
+    stop("\"order\" parameter should be \"name\" or \"time\"\n")
+  }
+  return(nodes)
+}
+
+
