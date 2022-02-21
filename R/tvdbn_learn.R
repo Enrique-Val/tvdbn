@@ -61,7 +61,7 @@ weight_causal_time_series <- function(t_star, dataset_length) {
   return(tmp)
 }
 
-learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = n_variables) {
+learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = n_variables, padding = FALSE) {
   start.time <- Sys.time()
   A = list()
   intercept = list()
@@ -77,6 +77,8 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   previous_lambda = list()
   sd_cv = c()
   sd_b = c()
+
+  # Parameter zeros contains the length of the dataset if we want to pad the names or NULL if we dont
 
   # Find the marginal distributions of the elements of the first time point
   weights_t0 = c()
@@ -98,9 +100,9 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   sd[[1]] = sd_t0
   for (t_star in 2:ts_length) {
     A[[t_star-1]] = matrix(nrow = n_variables, ncol = n_variables,
-                           dimnames = list(map(variables,time_name,t_star-1, ts_length), map(variables,time_name,t_star-2, ts_length)))
-    intercept[[t_star]] = matrix(nrow = n_variables, dimnames = list(map(variables,time_name,t_star-1, ts_length)))
-    sd[[t_star]] = matrix(nrow = n_variables, dimnames = list(map(variables,time_name,t_star-1, ts_length)))
+                           dimnames = list(map(variables,time_name,t_star-1, if (padding) ts_length else NULL), map(variables,time_name,t_star-2, if (padding) ts_length else NULL)))
+    intercept[[t_star]] = matrix(nrow = n_variables, dimnames = list(map(variables,time_name,t_star-1, if (padding) ts_length else NULL)))
+    sd[[t_star]] = matrix(nrow = n_variables, dimnames = list(map(variables,time_name,t_star-1, if (padding) ts_length else NULL)))
   }
 
   # Process the blacklist
@@ -299,9 +301,9 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   return (tvd_bayesian_network)
 }
 
-learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x)) {
+learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x), padding = FALSE) {
   ret = learn_tvdbn_coefficients(x, type = type, kernel_bandwidth = kernel_bandwidth, blacklist = blacklist,
-                                 whitelist = whitelist, max_parents = max_parents)
+                                 whitelist = whitelist, max_parents = max_parents, padding = padding)
   A = ret[["A"]]
   intercept = ret[["intercept"]]
   sd = ret[["sd"]]

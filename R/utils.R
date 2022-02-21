@@ -4,6 +4,8 @@
 #'
 #' @param name Name of the variable
 #' @param t Time instant (integer)
+#' @param len The length of the dataset or of the TVDBN (number of slices). This parameter is optional and will append as many left
+#' zeros as necessary so that all the time stamps have the same length
 #' @return The name of the variable with the time point correctly appended.
 #'
 #' @export
@@ -11,15 +13,16 @@ time_name <- function(name, t, len = NULL) {
   if (! is.null(len)) {
     # Type checking
     assertthat::assert_that(is.numeric(len))
-    assertthat::assert_that(len >= t)
+    assertthat::assert_that(len > 0)
     assertthat::assert_that(t >= 0)
+    assertthat::assert_that(len > t)
     # Compute the number of zeros to append. be careful if t=0
     zeros = 0
     if (t == 0) {
-      zeros = trunc(log10(len))
+      zeros = trunc(log10(len-1))
     }
     else {
-      zeros = trunc(log10(len)) - trunc(log10(t))
+      zeros = trunc(log10(len-1)) - trunc(log10(t))
     }
     if (zeros > 0) {
       for (i in 1:zeros) {
@@ -51,46 +54,8 @@ remove_time_name <- function(time_name) {
   return(c(var_name,time))
 }
 
-#' @title  Nodes of a Time-varying DBN
-#'
-#' @description  Get the nodes of a time-varying DBN
-#' @param tvdbn A TV-DBN, fitted or just the structure
-#' @return The nodes of the network
-#'
-#' @export
-nodes <- function(tvdbn) {
-  class(tvdbn) = class(tvdbn)[-1]
-  return(bnlearn::nodes(tvdbn))
-}
 
 
-
-
-#' @title  Structure of a node subset of a Time-varying DBN
-#'
-#' @description  Get the structure of a Time-varying DBN given a fitted Time-varying DBN,
-#'  considering only a subset of nodes of the network
-#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`
-#' @param nodes The nodes whose structure will be obtained.
-#' @return The structure of the TV-DBN, type = `tvdbn`
-#'
-#' @export
-subgraph <- function(tvdbn.fit, nodes) {
-  dag = bnlearn::subgraph(x = tvdbn.fit, nodes = nodes)
-  return(bn_to_tvdbn(dag))
-}
-
-
-#' @title  Structure of a Time-varying DBN
-#'
-#' @description  Get the structure of a Time-varying DBN given a fitted Time-varying DBN
-#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`
-#' @return The structure of the TV-DBN, type = `tvdbn`
-#'
-#' @export
-graph <- function(tvdbn.fit) {
-  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = nodes(tvdbn.fit)))
-}
 
 
 #' @title  Transition network in a time point (TODO)
@@ -133,22 +98,18 @@ transition_network_graph <- function(tvdbn.fit, time, normalize = TRUE) {
   variables = get_variables(tvdbn.fit)
   # We obtain the variables of the time of our interest
   var_list = NULL
-  if (has_zeros(tvdbn.fit)) {
-    var_list = unlist(map(variables, time_name, time, get_time_points(tvdbn.fit)-1))
+  network_length = NULL
+  if (is_padded(tvdbn.fit)) {
+    network_length = get_time_points(tvdbn.fit)
   }
-  else {
-    var_list = unlist(map(variables, time_name, time))
-  }
+
+  var_list = unlist(map(variables, time_name, time, network_length))
+
   # It said time is higher than 0, then we also consider the previous time slice
   # (just the previous if we assume Markov order 1. In the future, we will expand for
   # higher Markovian orders)
   if (time > 0) {
-    if (has_zeros(tvdbn.fit)) {
-      var_list = c(var_list,unlist(map(variables, time_name, time-1, get_time_points(tvdbn.fit)-1)))
-    }
-    else {
-      var_list = c(var_list,unlist(map(variables, time_name, time-1)))
-    }
+    var_list = c(var_list,unlist(map(variables, time_name, time-1, network_length)))
   }
   # return the subgraph with the nodes of interest (selected and previous time slices)
   to_ret = tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = sort(var_list))
@@ -235,14 +196,7 @@ append_networks <- function(tvdbn1, tvdbn2) {
   tvdbn1 = normalize_time(tvdbn1)
   tvdbn2 = change_time(tvdbn2, ini = get_time_points(tvdbn1)-1)
 
-  tvdbn2_nodes_toadd = nodes(tvdbn2)
-  to_del = c()
-
-  # Eliminate from the list of nodes of tvdbn2 all the nodes of the first time point
-  for (i in 1:length(get_variables(tvdbn2))-1) {
-    to_del = c(to_del,nodes(tvdbn2)[1+i*get_time_points(tvdbn2)])
-  }
-  tvdbn2_nodes_toadd = tvdbn2_nodes_toadd[ ! tvdbn2_nodes_toadd %in% to_del]
+  tvdbn2_nodes_toadd = nodes(tvdbn2)[as.integer(sapply(nodes(tvdbn2),remove_time_name)[2,]) != (get_time_points(tvdbn1)-1)]
 
   ## Add all the nodes and arcs of tvdbn2 to tvdbn1
   for (i in tvdbn2_nodes_toadd) {
@@ -271,90 +225,69 @@ append_networks <- function(tvdbn1, tvdbn2) {
 #'
 #' @export
 change_time <- function(trans_network, ini = 0) {
+  # Check if the time points are padded
+  new_length = NULL
+  if (is_padded(trans_network)) {
+    new_length = get_time_points(trans_network)+ini
+  }
+
+  # Get the old initial time
+  old_ini = get_initial_time(trans_network)
+
   # Get the number of time instants of the network
   n_time_points = get_time_points(trans_network)
-  # Time points is a list with all the time instant of the transition. For instance, it may range from 3 to 5
-  time_points = c()
-  sorted_list = sort(names(trans_network$nodes))
-  for (i in sorted_list[1:(n_time_points)]) {
-    time_points = c(time_points,as.numeric(remove_time_name(i)[2]))
-  }
-  time_points = sort(time_points)
-  # bnlearn has a bug and does not let us use the function nodes with inherited class
-  # We cast to class "bn" and later we will revert this change
-  class(trans_network) = "bn"
 
-
-  # Number of variables
-  n_vars = length(bnlearn::nodes(trans_network))/(n_time_points)
-  time_nodes = bnlearn::nodes(trans_network)
+  # Set of nodes
+  time_nodes = nodes(trans_network)
   new_nodes = c()
 
   for (i in time_nodes) {
     # Get the old time instant
     decomposed = remove_time_name(i)
-    old_tp = as.numeric(decomposed[2])
-    # Build the new time instant
-    new_tp = match(old_tp, time_points)-1
     var_name = decomposed[1]
-    new_name = time_name(var_name,new_tp+ini) #, len = n_time_points+ini-1
+    time_point = as.numeric(decomposed[2])
+    new_name = time_name(var_name,time_point+ini-old_ini, len = new_length)
     new_nodes = c(new_nodes, new_name)
   }
-  trans_network = bnlearn::rename.nodes(trans_network, new_nodes)
-
-  class(trans_network) = c("tvdbn",class(trans_network))
+  trans_network = rename.nodes(trans_network, new_nodes)
   return(trans_network)
 
 }
 
 remove_zeros <- function(tvdbn) {
-  tmp = class(tvdbn)
-  class(tvdbn) = class(tvdbn)[-1]
+  # Set of nodes
+  time_nodes = nodes(tvdbn)
   new_nodes = c()
-  for (i in bnlearn::nodes(tvdbn)) {
-    name = remove_time_name(i)
-    new_nodes = c(new_nodes,time_name(name[1],as.integer(name[2])))
+
+  for (i in time_nodes) {
+    # Get the old time instant
+    decomposed = remove_time_name(i)
+    var_name = decomposed[1]
+    time_point = as.numeric(decomposed[2])
+    new_name = time_name(var_name,time_point)
+    new_nodes = c(new_nodes, new_name)
   }
-  tvdbn = bnlearn::rename.nodes(tvdbn, new_nodes)
-  class(tvdbn) = tmp
+  tvdbn = rename.nodes(tvdbn, new_nodes)
   return(tvdbn)
 }
 
 add_zeros <- function(tvdbn) {
-  len = get_time_points(tvdbn)
-  tmp = class(tvdbn)
-  class(tvdbn) = "bn"
-  for (i in bnlearn::nodes(tvdbn)) {
-    name = remove_time_name(i)
-    bnlearn::nodes(tvdbn)[match(i,bnlearn::nodes(tvdbn))] = time_name(name[1],as.integer(name[2]), len)
+  network_length = get_time_points(tvdbn)
+
+  # Set of nodes
+  time_nodes = nodes(tvdbn)
+  new_nodes = c()
+
+  for (i in time_nodes) {
+    # Get the old time instant
+    decomposed = remove_time_name(i)
+    var_name = decomposed[1]
+    time_point = as.numeric(decomposed[2])
+    new_name = time_name(var_name,time_point, len = network_length)
+    new_nodes = c(new_nodes, new_name)
   }
-  class(tvdbn) = tmp
+  tvdbn = rename.nodes(tvdbn, new_nodes)
   return(tvdbn)
-}
-
-remove.node <- function(x,node) {
-  assertthat::assert_that("tvdbn" %in% class(x) || "tvdbn.fit" %in% class(x))
-  tmp = NULL
-  if ("tvdbn" %in% class(x)) {
-    assertthat::assert_that("bn" %in% class(x))
-    tmp = class(x)
-  }
-  else if ("tvdbn.fit" %in% class(x)) {
-    assertthat::assert_that("bn.fit" %in% class(x))
-    tmp = class(x)
-  }
-  x = bnlearn::remove.node(x,node)
-  class(x) = tmp
-  return(x)
-}
-
-has_zeros <- function(tvdbn) {
-  assertthat::assert_that("tvdbn" %in% class(tvdbn) || "tvdbn.fit" %in% class(tvdbn))
-  first_node = sort(nodes(tvdbn))[1]
-  if (nchar(remove_time_name(first_node)[2]) > 1) {
-    return(TRUE)
-  }
-  return(FALSE)
 }
 
 sort_nodes <- function(nodes, order = "name") {

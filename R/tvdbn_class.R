@@ -41,6 +41,9 @@ bn_to_tvdbn <- function(bn) {
 }
 
 
+#######################
+# GETTERS AND SETTERS #
+#######################
 
 #' @title Get the number of time points of a Time-Varying DBN
 #'
@@ -89,4 +92,65 @@ get_variables <- function(tvdbn) {
   }
 
   return(variable_vector)
+}
+
+
+get_initial_time <- function(tvdbn) {
+  return(as.integer(remove_time_name(sort_nodes(nodes(trans_network))[1])[2]))
+}
+
+
+#' @title  Nodes of a Time-varying DBN
+#'
+#' @description  Get the nodes of a time-varying DBN
+#' @param tvdbn A TV-DBN, fitted or just the structure
+#' @return The nodes of the network
+#'
+#' @export
+nodes <- function(tvdbn) {
+  class(tvdbn) = class(tvdbn)[-1]
+  return(bnlearn::nodes(tvdbn))
+}
+
+is_padded <- function(tvdbn) {
+  assertthat::assert_that("tvdbn" %in% class(tvdbn) || "tvdbn.fit" %in% class(tvdbn))
+  first_node = sort_nodes(nodes(tvdbn))[1]
+  if (nchar(remove_time_name(first_node)[2]) > 1) {
+    return(TRUE)
+  }
+  return(FALSE)
+}
+
+
+
+
+
+###################
+## FUNCTIONALITY ##
+####################
+
+#' @title  Structure of a node subset of a Time-varying DBN
+#'
+#' @description  Get the structure of a Time-varying DBN given a fitted Time-varying DBN,
+#'  considering only a subset of nodes of the network
+#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`
+#' @param nodes The nodes whose structure will be obtained.
+#' @return The structure of the TV-DBN, type = `tvdbn`
+#'
+#' @export
+subgraph <- function(tvdbn.fit, nodes) {
+  dag = bnlearn::subgraph(x = tvdbn.fit, nodes = nodes)
+  return(bn_to_tvdbn(dag))
+}
+
+
+#' @title  Structure of a Time-varying DBN
+#'
+#' @description  Get the structure of a Time-varying DBN given a fitted Time-varying DBN
+#' @param tvdbn.fit A fitted Time-varying DBN of type `tvdbn.fit`
+#' @return The structure of the TV-DBN, type = `tvdbn`
+#'
+#' @export
+graph <- function(tvdbn.fit) {
+  return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = nodes(tvdbn.fit)))
 }
