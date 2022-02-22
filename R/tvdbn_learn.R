@@ -245,29 +245,26 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
 
 
 learn_tvdbn_structure <- function(A) {
-  string_model = ""
-  # Variables in the first time instant
-  for (i in dimnames(A[[1]])[[2]]) {
-    string_model = paste(string_model,"[",i,"]",sep="")
+  dag = NULL
+  node_set = dimnames(A[[1]])[[2]]
+  for (i in 1:length(A)) {
+    node_set = c(node_set, dimnames(A[[i]])[[1]])
   }
+  dag = bnlearn::empty.graph(nodes = node_set)
+
+  arc_set = matrix(ncol = 2, dimnames = list(NULL, c("from", "to")))[-1,]
   for (t in 1:(length(A))) {
     A.t = A[[t]]
-    string_model.t = ""
     for (i in dimnames(A.t)[[1]]) {
-      string_model = paste(string_model,"[",i,"|",sep="")
-
       for (j in dimnames(A.t)[[2]]) {
         if (A.t[i,j] != 0) {
-          string_model = paste(string_model,j,":",sep="")
+          arc_set = rbind(arc_set, c(j, i))
         }
       }
-      string_model = str_sub(string_model,1,nchar(string_model)-1)
-      string_model = paste(string_model,"]",sep="")
     }
-    string_model = paste(string_model,string_model.t,sep="")
   }
-  print(string_model)
-  dag <-model2network(string_model)
+
+  arcs(dag) = arc_set
   return(tvdbn::bn_to_tvdbn(dag))
 }
 

@@ -127,7 +127,7 @@ is_padded <- function(tvdbn) {
 
 ###################
 ## FUNCTIONALITY ##
-####################
+###################
 
 #' @title  Structure of a node subset of a Time-varying DBN
 #'
