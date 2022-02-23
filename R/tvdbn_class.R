@@ -96,7 +96,7 @@ get_variables <- function(tvdbn) {
 
 
 get_initial_time <- function(tvdbn) {
-  return(as.integer(remove_time_name(sort_nodes(nodes(trans_network))[1])[2]))
+  return(as.integer(remove_time_name(sort_nodes(nodes(tvdbn))[1])[2]))
 }
 
 

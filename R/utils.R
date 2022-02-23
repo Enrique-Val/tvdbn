@@ -165,15 +165,8 @@ all_transition_network_graph <- function(tvdbn.fit, normalize = TRUE) {
   tvdbn = tvdbn::graph(tvdbn.fit)
   tn_list = list()
   time_instants = tvdbn::get_time_points(tvdbn.fit)
-  if (normalize) {
-    for (i in 1:(time_instants-1)) {
-      tn_list[[i]] = tvdbn::normalize_time(tvdbn::transition_network_graph(tvdbn, i))
-    }
-  }
-  else {
-    for (i in 1:(time_instants-1)) {
-      tn_list[[i]] = tvdbn::transition_network_graph(tvdbn, i)
-    }
+  for (i in 1:(time_instants-1)) {
+    tn_list[[i]] = tvdbn::normalize_time(tvdbn::transition_network_graph(tvdbn, i, normalize = normalize))
   }
 
   return(tn_list)
