@@ -1,0 +1,200 @@
+---
+title: "Loading NCEP/NCAR Reanalysis"
+author: "Enrique Valero Leal"
+date: "26/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+A tutorial for installing and using the NCER reanalysis data alsongside bnlearn
+
+## Some first instructions and information
+
+DO NOT use R in an Anaconda environment. Anaconda has proven to be a great manager of Python-related apps and features, but RStudio in Anaconda has some bugs that the standalone version doesn't (i.e. the impossibility of loading NCEP data).
+
+Credit to D. Royé (<https://dominicroye.github.io/en/>), who has a comprehensible guide on the Reanalysis data sets and how to use them in R. Some parts of this scripts are heavily based on his original guides.
+
+## Installation of packages necessary for bnlearn/dbnR
+
+```{r install dbnR}
+# Basic usage
+if(!require("devtools")) install.packages("devtools")
+library(devtools)
+if(!require("bnlearn")) install.packages("bnlearn")
+if(!require("data.table")) install.packages("data.table")
+if(!require("dbnR")) devtools::install_github("dkesada/dbnR")
+# Network visualization
+if(!require("visNetwork")) install.packages("visNetwork")
+if(!require("magrittr")) install.packages("magrittr")
+if(!require("grDevices")) install.packages("grDevices")
+```
+
+## Installation of packages necessary for NCEP/NCAR
+
+```{r install RNCEP}
+if(!require("RNCEP")) install.packages("RNCEP")
+if(!require("lubridate")) install.packages("lubridate")
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("sf")) install.packages("sf")
+```
+
+## Loading of packages necessary for bnlearn/dbnR
+
+```{r load dbnR}
+# Basic usage
+library(bnlearn)
+library(data.table)
+library(dbnR)
+# Network visualization
+library(visNetwork)
+library(magrittr)
+library(grDevices)
+```
+
+## Loading of packages necessary for NCEP/NCAR
+
+```{r load RNCEP}
+library(RNCEP)
+library(lubridate) #date and time manipulation
+library(tidyverse) #data manipulation and visualization
+library(RColorBrewer) #color schemes
+library(sf) #to import a spatial object and to work with geom_sf in ggplot2
+```
+
+## How to load NCEP data
+
+We have to define four ranges: One for the months, another for the year, for the latitude and for the longitud. Then, we use the method NCEP.gather to retrieve the data within those ranges of a certain variables (in the example the air temperature at pressure levels of 850 is selected).
+
+```{r load_data}
+month_range <- c(1,12)     #period of months
+year_range <- c(2000,2016) #period of years
+
+lat_range <- c(-60,60)      #latitude range
+lon_range <- c(-50,50)     #longitude range
+ 
+
+data <- NCEP.gather("air",    #name of the variable
+                    850, #pressure level 850hPa
+                    month_range,year_range,
+                    lat_range,lon_range,
+                    return.units = TRUE,
+                    reanalysis2=TRUE)
+```
+
+## Brief description of the data retrieved
+
+The data is stored in a an array, although there are implicitely 3 dimensions (dimensions that can be consulted using dimnames(data)[[number]]).
+
+-   Dimension 1: Latitude
+
+-   Dimension 2: Longitude
+
+-   Dimension 3: Timestamp. By default, an Earth observation is made each 6 hours (i.e. 4 per day). For example, when you load (as we did) 12 months, we focus on a latitude between 30 and 60 degrees (at a resolution of 2.5, 13 grid points) and a longitude between -30 and 50 (at a resolution of 2.5, 33 grid points), we are loading a total of 12x13x33 = 628056 grid points).
+
+```{r dimensions}
+#longitude and latitude
+lat <- dimnames(data)[[1]]  # Returns the list of observed latitude points
+lon <- dimnames(data)[[2]]  # Returns the list of the observed longitude points
+time_stamps <- dimnames(data)[[3]]  # Returns the list of the timestamps
+head(lon);head(lat)
+```
+
+### How to consult the data retrieved
+
+Let's suppose we want to access the point (5,4) (i.e latitud is 50 and longitude is -22.5) of the grid of the second timestamp (1 of January of 2016 at 6 AM)
+
+We can access the data using the R indexing system. The generalisation of the access is:
+
+$$ data\_array[ord(latitude), ord(longitude), ord(timestamp)]  $$
+
+The first index makes reference to the index of the latitude (for instance, the latitude 50 is the 5th latitude of our grid in our example), the second one is the index of the longitud and the third one is the index of timestamp.
+
+```{r access_ordinal}
+data[5,4,2]
+data[,,2]
+```
+
+Another way to access the array is to use the actual values of the data instead of their ordinals
+
+```{r access_value}
+data["50","-22.5","2016_01_01_06"]
+```
+
+## Train a web with this data
+
+We usually would want to consider more feature other than the temperature at a certain atmospheric pressure and we would want to do some pre-processing (clustering to reduce the number of points of the grids, which will serve as features, etc).
+
+First, we would have to convert the array "data" into a proper workable dataset. To do so, we define the function transform to dataset. In each row, we will have every timestamp, while the attributes/columns will be the points of the grid (in the form "(latitude,longitude)").
+
+```{r transform_function}
+transform_to_dataset <- function(data_NCEP) {
+  names <- c()
+  for (i in dimnames(data_NCEP)[[1]]) {
+    for (j in dimnames(data_NCEP)[[2]]) {
+      name <- paste("(",i,",",j,")",sep="")
+      names <- append(names, name)
+    }
+  }
+  dframe <- data.frame()
+  for (k in dimnames(data_NCEP)[[3]]) {
+    dframe <- rbind(dframe, as.vector(t(data_NCEP[,,k])))
+  }
+  colnames(dframe) <- names
+  return(setDT(dframe)) 
+}
+```
+
+We launch the function an store the data in data_trans:
+
+```{r transform_data}
+data_trans <- transform_to_dataset(data_NCEP = data)
+#summary(data_trans)  <- Commented, the output is very long
+```
+
+We learn the structure using dbnR. Due to the large number of feature, we only take into consideration the first 60 features. This wouldn't have any sense building a real application, but this is just for demonstration purposes.
+
+```{r structure}
+size = 3
+dt_train <- data_trans[1:1300,1:60]
+dt_val <- data_trans[1301:1464,1:60]
+blacklist <- c()  # We could specify a not empty blacklist (forbidden arcs)
+net <- dbnR::learn_dbn_struc(dt_train, size, method = "dmmhc", blacklist = blacklist, intra = FALSE,
+                             restrict = "mmpc",  maximize = "hc", 
+                             restrict.args = list(test = "cor"), 
+                             maximize.args = list(score = "bic-g", maxp = 10))
+
+#net <- dbnR::learn_dbn_struc(dt_train, size, method = "psoho")
+```
+
+Next, we learn the parameters
+
+```{r params}
+f_dt_train <- fold_dt(dt_train, size)
+f_dt_val <- fold_dt(dt_val, size)
+fit <- dbnR::fit_dbn_params(net, f_dt_train, method = "mle")
+```
+
+Finally, we can visualize it
+
+```{r vis}
+dbnR::plot_dynamic_network(fit)
+```
+
+## Test gaussianity/normality of the dataset.
+We will use the MVN (multivariate normal) package.
+```{r import_mvn}
+if(!require("MVN")) install.packages("MVN")
+library(MVN)
+```
+
+The function mvn allows us to perform different tests of gaussianity to a multivariate variable. The parameter mvnTest allow us to select difference multivariate normality test of our variables.
+```{r mardia_test}
+result<-mvn(data= data_trans[1:4999],mvnTest="mardia")
+result$multivariateNormality
+```
+

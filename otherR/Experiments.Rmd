@@ -1,0 +1,273 @@
+---
+title: "Loading NCEP/NCAR Reanalysis"
+author: "Enrique Valero Leal"
+date: "03/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installation of packages necessary for bnlearn/dbnR
+
+```{r install dbnR, include=FALSE}
+# Basic usage
+if(!require("devtools")) install.packages("devtools")
+library(devtools)
+if(!require("bnlearn")) install.packages("bnlearn")
+if(!require("data.table")) install.packages("data.table")
+if(!require("dbnR")) devtools::install_github("dkesada/dbnR")
+# Network visualization
+if(!require("visNetwork")) install.packages("visNetwork")
+if(!require("magrittr")) install.packages("magrittr")
+if(!require("grDevices")) install.packages("grDevices")
+```
+
+## Installation of packages necessary for NCEP/NCAR
+
+```{r install RNCEP, include=FALSE}
+if(!require("RNCEP")) install.packages("RNCEP")
+if(!require("lubridate")) install.packages("lubridate")
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("sf")) install.packages("sf")
+```
+
+## Installation of packages necessary for tvdbn
+```{r install tvdbn, include=FALSE}
+if(!require("tvdbn")) install.packages("tvdbn")
+if(!require("purrr")) install.packages("purrr")
+```
+
+## Loading of packages necessary for bnlearn/dbnR
+
+```{r load dbnR, include=FALSE}
+# Basic usage
+library(bnlearn)
+library(data.table)
+library(dbnR)
+# Network visualization
+library(visNetwork)
+library(magrittr)
+library(grDevices)
+```
+
+## Loading of packages necessary for NCEP/NCAR
+
+```{r load RNCEP, include=FALSE}
+library(RNCEP)
+library(lubridate) #date and time manipulation
+library(tidyverse) #data manipulation and visualization
+library(RColorBrewer) #color schemes
+library(sf) #to import a spatial object and to work with geom_sf in ggplot2
+```
+
+## Loading of packages necessary for tvdbn
+
+```{r load tvdbn, include=FALSE}
+library(tvdbn)
+library(purrr) 
+library(abind)
+```
+
+## Dataset loading
+
+
+
+We have to define four ranges: One for the months, another for the year, for the latitude and for the longitud. Then, we use the method NCEP.gather to retrieve the data within those ranges of a certain variables (in the example the air temperature at pressure levels of 850 is selected).
+
+```{r load_data}
+month_range <- c(10,12)     #period of months
+year_range <- c(2020,2020) #period of years
+
+lat_range <- c(30,80)      #latitude range
+lon_range <- c(-30,60)     #longitude range
+ 
+
+data_climate <- NCEP.gather("air",    #name of the variable
+                    850, #pressure level 850hPa
+                    month_range,year_range,
+                    lat_range,lon_range,
+                    return.units = TRUE,
+                    reanalysis2=TRUE)
+```
+
+## Process dataset
+
+First, we define a function that let us reduce the resolution.
+```{r resolution_function}
+reduce_resolution <- function(data_NCEP,factor) {
+  del_lat = 1:length(data_NCEP[,1,1])
+  del_lon = 1:length(data_NCEP[1,,1])
+  ##
+  del_lat = del_lat[del_lat %% factor != 0]
+  del_lon = del_lon[del_lon %% factor != 0]
+
+  return(data_NCEP[-del_lat,-del_lon,])
+}
+```
+
+Now, we reduce the dimensionalty. We aggregate by months and reduce the resolution in order to get approx 50 features
+```{r month_aggregate}
+data_climate_pr = NCEP.aggregate(data_climate, DAYS = TRUE, HOURS = FALSE, fxn = "mean")
+data_climate_pr = reduce_resolution(data_climate_pr, round(sqrt(length(data_climate_pr[,1,1])*length(data_climate_pr[,1,1])/20))  )
+```
+
+## Train a web with this data
+First, we would have to convert the array into a proper workable dataset. To do so, we define the function transform to dataset.
+
+```{r transform_function}
+transform_to_dataset <- function(data_NCEP) {
+  names <- c()
+  for (i in dimnames(data_NCEP)[[1]]) {
+    for (j in dimnames(data_NCEP)[[2]]) {
+      i_aux = i
+      if (i <0) {
+        i_aux = gsub("-", "_",i)
+      }
+      j_aux = j
+      if (j <0) {
+        j_aux = gsub("-", "_",j)
+      }
+      name <- paste("lon",i_aux,"lat",j_aux,"",sep="")
+      names <- append(names, name)
+    }
+  }
+  dframe <- data.frame()
+  for (k in dimnames(data_NCEP)[[3]]) {
+    dframe <- rbind(dframe, as.vector(t(data_NCEP[,,k])))
+  }
+  colnames(dframe) <- names
+  return(setDT(dframe)) 
+}
+```
+
+
+
+```{r transform_data}
+climate <- transform_to_dataset(data_NCEP = data_climate_pr)
+climate <- as.matrix(climate)
+```
+
+We learn a tvdbn
+```{r learn_tvdbn_climate}
+tvdbn_climate.fit = tvdbn::learn_tvdbn(climate, type = "autoregressive", max_parents = 5, kernel_bandwidth = (length(climate[,1])^2)/49*(1))
+```
+## Validación con motor dataset
+```{r import_motor, include=FALSE}
+tmp = read_csv("../data/motor_measures_v2_red.csv")
+
+# Normalize using z-score
+means = colMeans(tmp)
+sds = sapply(tmp, mean, na.rm = TRUE)
+
+for (i in 2:ncol(tmp)) {
+  tmp[,i] = (tmp[,i]-means[i])/sds[i]
+}
+
+# Study the length of the time series that benefits us the more
+# We need a trade-off between having a large set of series and having long series
+p = c()
+m = c()
+for (i in seq(0,600,10)) {
+  p = c(p, length(table(tmp["profile_id"])[table(tmp["profile_id"]) > i]))
+  m = c(m,min(table(tmp["profile_id"])[table(tmp["profile_id"]) > i]))
+}
+plot(seq(0,600,10), p*m)
+
+# Remove series with under 150 time points
+min_length = 150
+interest_series = table(tmp["profile_id"])[table(tmp["profile_id"]) > min_length]
+
+max_length = min(interest_series)
+
+library(abind)
+# Truncate every serie to have only 150 time points and add them in an 3D array
+mat_list = list()
+for (i in 1:length(interest_series)) {
+  serie_i = tmp[tmp[,"profile_id"] == as.integer(names(interest_series))[i],]
+  mat_list[[i]] = head(serie_i[,-1],max_length)
+}
+
+array_3d = abind(mat_list, along = 3)
+tvdbn_motor = tvdbn::learn_tvdbn(array_3d)
+
+```
+
+
+```{r cv, include=FALSE}
+# First, make the folds
+n_folds = 2
+randomized_index = sample(1:length(array_3d[1,1,]))
+split_index = split(randomized_index, cut(seq_along(randomized_index),n_folds,labels = FALSE))
+folds = list()
+for (i in 1:n_folds) {
+  folds[[i]] = array_3d[,,split_index[[i]]]
+}
+
+# Select the interest kernel widths
+kernel_widths = c(500)
+# Select the threshold for the global_graph
+threshold = 0.8
+
+# Train and validate
+mse = c()
+mse_sd = c()
+mse_unfair =c()
+mse_unfair_sd = c()
+
+time = c()
+hamming = c()
+mean_arcs = c()
+pers_arcs = c()
+time_sd = c()
+hamming_sd = c()
+mean_arcs_sd = c()
+pers_arcs_sd = c()
+
+
+for (k in kernel_widths) {
+  time_k = c()
+  hamming_k = c()
+  mean_arcs_k = c()
+  pers_arcs_k = c()
+  for (i in 1:n_folds) {
+    train_data = abind(folds[-i])
+    test_data = folds[[i]]
+    t0 = Sys.time()
+    network = tvdbn::learn_tvdbn(train_data, kernel_bandwidth = k)
+    tf = Sys.time()
+    # Store time
+    time_k = c(time_k, tf-t0)
+    # Store the hamming distance between each consecutive instant
+    hamming_k = c(hamming_k, tvdbn::hamming_changes(network))
+    # Store the number of arcs per transition network
+    mean_arcs_k = c(mean_arcs_k, tvdbn::n_arcs(network))
+    # Store the % of persistent arcs of the network (in relation with the average number of arcs per transition network)
+    pers_arcs_k = c(pers_arcs_k, length(arcs(global_graph(sp1, threshold = threshold))[,1])/mean(tvdbn::n_arcs(network))*100)
+    
+    for (j in length(test_data[1,1,])) {
+      mse = c(mse,tvdbn::inference(network, test_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]])
+    }
+    for (j in length(train_data[1,1,])) {
+      mse_unfair = c(mse_unfair,tvdbn::inference(network, train_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]])
+    }
+  } # end for i in folds
+  
+  time = c(time, mean(time_k))
+  hamming = c(hamming, mean(hamming_k))
+  mean_arcs = c(mean_arcs, mean(mean_arcs_k))
+  pers_arcs = c(pers_arcs, mean(pers_arcs_k))
+  
+  time_sd = c(time_sd, sd(time_k))
+  hamming_sd = c(hamming_sd, sd(hamming_k))
+  mean_arcs_sd = c(mean_arcs_sd, sd(mean_arcs_k))
+  pers_arcs_sd = c(pers_arcs_sd, sd(pers_arcs_k))
+  
+  
+}
+print(mean(mse))
+print(mean(mse_unfair))
+print(mean(time))
+
+```

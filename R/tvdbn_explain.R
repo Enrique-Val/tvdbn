@@ -89,6 +89,7 @@ global_graph_2g <- function(bn1, bn2) {
 #'
 #' @export
 global_graph <- function(tvdbn, t_0 = NULL, t_f = NULL, threshold = 1) {
+  assertthat::assert_that(0 <= threshold & 1 >= threshold)
   t0 = Sys.time()
   bn_list = tvdbn
   arc_matrix = NULL
@@ -148,7 +149,7 @@ global_graph <- function(tvdbn, t_0 = NULL, t_f = NULL, threshold = 1) {
 
   # Now we have the arc_matrix and we are going to build the global_graph with said matrix
   # First, we threshold the matrix so that it becomes and adjacency matrix
-  arc_matrix = arc_matrix >= threshold*n_trans_network
+  arc_matrix = arc_matrix > threshold*n_trans_network
   rownames(arc_matrix) = sapply(rownames(arc_matrix), time_name,0)
   colnames(arc_matrix) = sapply(colnames(arc_matrix), time_name,1)
   global_graph = bnlearn::empty.graph(c(rownames(arc_matrix), colnames(arc_matrix)))
@@ -251,4 +252,22 @@ summary_network <- function(tvdbn, frequency, threshold=1) {
   return(summary)
 }
 
+
+#' @title  Graph that contains every arc of the transition networks of a TV-DBN or a list of BNs
+#'
+#' @description  Get a graph that contains every arc of the transition networks of a time-varying
+#'  dynamic Bayesian network or of a list of Bayesian networks with the same set of nodes
+#'
+#' @param tvdbn A  time-varying DBN of type `tvdbn.fit` or `tvdbn` OR a list of Bayesian networks
+#' with the same set of nodes
+#' @param t_0 Start computing the global graph at the instant t_0. (Use only if the
+#' type of `tvdbn` is `tvdbn` or `tvdbn.fit`. With list, the paramter becomes useless)
+#' @param t_f Finish computing the global graph at the instant t_f. (Use only if the
+#' type of `tvdbn` is `tvdbn` or `tvdbn.fit`. With list, the paramter becomes useless)
+#' @return A (transition) Bayesian network, the all-arc graph of the input networks
+#'
+#' @export
+all_arc_graph <- function(tvdbn, t_0 = NULL, t_f = NULL) {
+  return(tvdbn::global_graph(tvdbn = tvdbn, t_0 = t_0, t_f = t_f, threshold = 0))
+}
 

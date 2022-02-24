@@ -154,3 +154,9 @@ subgraph <- function(tvdbn.fit, nodes) {
 graph <- function(tvdbn.fit) {
   return(tvdbn::subgraph(tvdbn.fit = tvdbn.fit, nodes = nodes(tvdbn.fit)))
 }
+
+
+n_arcs <- function(tvbdn) {
+  arc_times = as.integer(sapply(arcs(tvbdn)[,1],remove_time_name)[2,])
+  return(table(factor(arc_times, levels = 0:(get_time_points(tvbdn)-2))))
+}

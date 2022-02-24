@@ -39,20 +39,4 @@ vignettes/*.pdf
 .Renviron
 
 # Other R files non-related to tvdbn
-otherR/distributions.R
-
-otherR/distributions_experiments.R
-
-otherR/l1_regression.Rmd
-
-otherR/ManualBayesianNetworks.Rmd
-
-otherR/override.R
-
-otherR/Presentation_11_supp.Rmd
-
-otherR/Presentation_13&14_supp.R
-
-otherR/TimeVarying.nb.html
-
-otherR/TimeVarying.Rmd
+otherR/*
