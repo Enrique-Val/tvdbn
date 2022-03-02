@@ -123,7 +123,7 @@ transform_to_dataset <- function(data_NCEP) {
     for (j in dimnames(data_NCEP)[[2]]) {
       i_aux = i
       if (i <0) {
-        i_aux = gsub("-", "_",i)
+        i_aux = gsub("-", "W",i)
       }
       j_aux = j
       if (j <0) {
@@ -156,6 +156,7 @@ tvdbn_climate.fit = tvdbn::learn_tvdbn(climate, type = "autoregressive", max_par
 ## Validación con motor dataset
 ```{r import_motor, include=FALSE}
 tmp = read_csv("../data/motor_measures_v2_red.csv")
+tmp = tmp[1:6]
 
 # Normalize using z-score
 means = colMeans(tmp)
@@ -179,10 +180,11 @@ plot(seq(0,600,10), p*m)
 min_length = 150
 interest_series = table(tmp["profile_id"])[table(tmp["profile_id"]) > min_length]
 
-max_length = min(interest_series)
+#max_length = min(interest_series)
+max_length = 50
 
 library(abind)
-# Truncate every serie to have only 150 time points and add them in an 3D array
+# Truncate every serie to have only max_length time points and add them in an 3D array
 mat_list = list()
 for (i in 1:length(interest_series)) {
   serie_i = tmp[tmp[,"profile_id"] == as.integer(names(interest_series))[i],]
@@ -190,14 +192,14 @@ for (i in 1:length(interest_series)) {
 }
 
 array_3d = abind(mat_list, along = 3)
-tvdbn_motor = tvdbn::learn_tvdbn(array_3d)
+#tvdbn_motor = tvdbn::learn_tvdbn(array_3d)
 
 ```
 
 
 ```{r cv, include=FALSE}
 # First, make the folds
-n_folds = 2
+n_folds = 5
 randomized_index = sample(1:length(array_3d[1,1,]))
 split_index = split(randomized_index, cut(seq_along(randomized_index),n_folds,labels = FALSE))
 folds = list()
@@ -206,31 +208,42 @@ for (i in 1:n_folds) {
 }
 
 # Select the interest kernel widths
-kernel_widths = c(500)
+kernel_widths = c(0.05,5,50,500,50000)
 # Select the threshold for the global_graph
-threshold = 0.8
+threshold = 0.9
+# Select the number of points of partial inference
+p_inference = 5
+# Last time point
+last_tp = length(array_3d[,1,1])-1
 
 # Train and validate
-mse = c()
-mse_sd = c()
-mse_unfair =c()
-mse_unfair_sd = c()
+mse = matrix(0, nrow = length(kernel_widths), ncol = p_inference+1, dimnames = list(as.character(kernel_widths), c("full", as.character(round(last_tp/p_inference*0:(p_inference-1)))) )  )
+mse_sd = mse
+mse_unfair = mse
+mse_unfair_sd = mse
 
 time = c()
 hamming = c()
 mean_arcs = c()
 pers_arcs = c()
+pers_arcs_total = c()
 time_sd = c()
 hamming_sd = c()
 mean_arcs_sd = c()
 pers_arcs_sd = c()
+pers_arcs_total_sd = c()
 
 
 for (k in kernel_widths) {
+  mse_k = matrix(0, ncol = p_inference+1, dimnames = list(NULL, c("full", as.character(round(last_tp/p_inference*0:(p_inference-1)))) )  )
+  mse_unfair_k = mse_k
+  
   time_k = c()
   hamming_k = c()
   mean_arcs_k = c()
   pers_arcs_k = c()
+  pers_arcs_total_k = c()
+  
   for (i in 1:n_folds) {
     train_data = abind(folds[-i])
     test_data = folds[[i]]
@@ -244,28 +257,66 @@ for (k in kernel_widths) {
     # Store the number of arcs per transition network
     mean_arcs_k = c(mean_arcs_k, tvdbn::n_arcs(network))
     # Store the % of persistent arcs of the network (in relation with the average number of arcs per transition network)
-    pers_arcs_k = c(pers_arcs_k, length(arcs(global_graph(sp1, threshold = threshold))[,1])/mean(tvdbn::n_arcs(network))*100)
+    pers_arcs_k = c(pers_arcs_k, length(arcs(global_graph(network, threshold = threshold))[,1])/tvdbn::n_arcs(network)*100)
+    # Number of persistent arcs in relations with the set of total arcs
+    pers_arcs_total_k = c(pers_arcs_total_k, length(arcs(global_graph(network, threshold = threshold))[,1])/length(arcs(all_arc_graph(network))[,1])*100)
     
-    for (j in length(test_data[1,1,])) {
-      mse = c(mse,tvdbn::inference(network, test_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]])
+    # Mse with test dataset
+    for (j in 1:length(test_data[1,1,])) {
+      mse_i = c()
+      mse_i["full"] = tvdbn::inference(network, test_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]]
+      for (sp in 1:p_inference-1) {
+        mse_i[as.character(round(last_tp/5*sp))] = tvdbn::inference(network, test_data[,,j],ini=round(last_tp/5*sp),end=round(last_tp/5*(sp+1)))[[4]]
+      }
+      mse_k = rbind(mse_k,mse_i)
     }
-    for (j in length(train_data[1,1,])) {
-      mse_unfair = c(mse_unfair,tvdbn::inference(network, train_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]])
+    
+    
+    # Mse with train dataset
+    for (j in 1:length(train_data[1,1,])) {
+      mse_unfair_i = c()
+      mse_unfair_i["full"] = tvdbn::inference(network, train_data[,,j],ini=0,end=length(array_3d[,1,1])-1)[[4]]
+      for (sp in 1:p_inference-1) {
+        mse_unfair_i[as.character(round(last_tp/5*sp))] = tvdbn::inference(network, train_data[,,j],ini=round(last_tp/5*sp),end=round(last_tp/5*(sp+1)))[[4]]
+      }
+      mse_unfair_k = rbind(mse_unfair_k, mse_unfair_i)
     }
+    
+    
   } # end for i in folds
   
-  time = c(time, mean(time_k))
-  hamming = c(hamming, mean(hamming_k))
-  mean_arcs = c(mean_arcs, mean(mean_arcs_k))
-  pers_arcs = c(pers_arcs, mean(pers_arcs_k))
+  mse[as.character(k),1] = mean(mse_k[,1])
+  for (i in 1:p_inference+1) {
+    mse[as.character(k),i] = mean(mse_k[,i])
+  }
+  mse_sd[as.character(k),1] = sd(mse_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_sd[as.character(k),i] = sd(mse_k[,i])
+  }
   
-  time_sd = c(time_sd, sd(time_k))
-  hamming_sd = c(hamming_sd, sd(hamming_k))
-  mean_arcs_sd = c(mean_arcs_sd, sd(mean_arcs_k))
-  pers_arcs_sd = c(pers_arcs_sd, sd(pers_arcs_k))
+  mse_unfair[as.character(k),1] = mean(mse_unfair_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_unfair[as.character(k),i] = mean(mse_unfair_k[,i])
+  }
+  mse_unfair_sd[as.character(k),1] = sd(mse_unfair_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_unfair_sd[as.character(k),i] = sd(mse_unfair_k[,i])
+  }
   
+  time[as.character(k)] = mean(time_k)
+  hamming[as.character(k)] = mean(hamming_k)
+  mean_arcs[as.character(k)] = mean(mean_arcs_k)
+  pers_arcs[as.character(k)] = mean(pers_arcs_k)
+  pers_arcs_total[as.character(k)] = mean(pers_arcs_total_k)
+  
+  time_sd[as.character(k)] = sd(time_k)
+  hamming_sd[as.character(k)] = sd(hamming_k)
+  mean_arcs_sd[as.character(k)] = sd(mean_arcs_k)
+  pers_arcs_sd[as.character(k)] = sd(pers_arcs_k)
+  pers_arcs_total_sd[as.character(k)] = sd(pers_arcs_total_k)
   
 }
+
 print(mean(mse))
 print(mean(mse_unfair))
 print(mean(time))
