@@ -88,7 +88,7 @@ library(abind)
 We have to define four ranges: One for the months, another for the year, for the latitude and for the longitud. Then, we use the method NCEP.gather to retrieve the data within those ranges of a certain variables (in the example the air temperature at pressure levels of 850 is selected).
 
 ```{r load_data}
-month_range <- c(10,12)     #period of months
+month_range <- c(12,12)     #period of months
 year_range <- c(2020,2020) #period of years
 
 lat_range <- c(30,80)      #latitude range
@@ -130,17 +130,23 @@ First, we would have to convert the array into a proper workable dataset. To do 
 ```{r transform_function}
 transform_to_dataset <- function(data_NCEP) {
   names <- c()
-  for (i in dimnames(data_NCEP)[[1]]) {
-    for (j in dimnames(data_NCEP)[[2]]) {
+  for (i in as.double(dimnames(data_NCEP)[[1]])) {
+    for (j in as.double(dimnames(data_NCEP)[[2]])) {
       i_aux = i
       if (i <0) {
-        i_aux = gsub("-", "W",i)
+        i_aux = paste(-i, "S", sep = "")
+      }
+      else {
+        i_aux = paste(i, "N", sep = "")
       }
       j_aux = j
       if (j <0) {
-        j_aux = gsub("-", "_",j)
+        j_aux = paste(-j, "W", sep= "")
       }
-      name <- paste("lon",i_aux,"lat",j_aux,"",sep="")
+      else {
+        j_aux = paste(j,"E", sep= "")
+      }
+      name <- paste("lat",i_aux,"_lon",j_aux,"",sep="")
       names <- append(names, name)
     }
   }
