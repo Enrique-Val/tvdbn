@@ -6,15 +6,24 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+if(!require("knitr")) install.packages("knitr")
+library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Basic dependencies
+```{r install dbnR, include=FALSE}
+# Basic usage
+if(!require("Rcpp")) install.packages("Rcpp", dependencies = TRUE)
+library(Rcpp)
+if(!require("devtools")) install.packages("devtools")
+library(devtools)
 ```
 
 ## Installation of packages necessary for bnlearn/dbnR
 
 ```{r install dbnR, include=FALSE}
 # Basic usage
-if(!require("devtools")) install.packages("devtools")
-library(devtools)
 if(!require("bnlearn")) install.packages("bnlearn")
 if(!require("data.table")) install.packages("data.table")
 if(!require("dbnR")) devtools::install_github("dkesada/dbnR")
@@ -30,13 +39,15 @@ if(!require("grDevices")) install.packages("grDevices")
 if(!require("RNCEP")) install.packages("RNCEP")
 if(!require("lubridate")) install.packages("lubridate")
 if(!require("tidyverse")) install.packages("tidyverse")
-if(!require("sf")) install.packages("sf")
+if(!require("sf")) install.packages("sf", dependencies = TRUE)
 ```
 
 ## Installation of packages necessary for tvdbn
 ```{r install tvdbn, include=FALSE}
+if(!require("glmnet")) install.packages("glmnet")
 if(!require("tvdbn")) install.packages("tvdbn")
 if(!require("purrr")) install.packages("purrr")
+if(!require("abind")) install.packages("abind")
 ```
 
 ## Loading of packages necessary for bnlearn/dbnR
@@ -155,8 +166,8 @@ tvdbn_climate.fit = tvdbn::learn_tvdbn(climate, type = "autoregressive", max_par
 ```
 ## Validación con motor dataset
 ```{r import_motor, include=FALSE}
-tmp = read_csv("../data/motor_measures_v2_red.csv")
-tmp = tmp[1:6]
+tmp = read.csv("../data/motor_measures_v2_red.csv")
+#tmp = tmp[1:6]
 
 # Normalize using z-score
 means = colMeans(tmp)
@@ -180,8 +191,8 @@ plot(seq(0,600,10), p*m)
 min_length = 150
 interest_series = table(tmp["profile_id"])[table(tmp["profile_id"]) > min_length]
 
-#max_length = min(interest_series)
-max_length = 50
+max_length = min(interest_series)
+#max_length = 50
 
 library(abind)
 # Truncate every serie to have only max_length time points and add them in an 3D array
@@ -208,9 +219,9 @@ for (i in 1:n_folds) {
 }
 
 # Select the interest kernel widths
-kernel_widths = c(0.05,5,50,500,50000)
+kernel_widths = c(500) #(0.5,50,500,5000)
 # Select the threshold for the global_graph
-threshold = 0.9
+threshold = 0.95
 # Select the number of points of partial inference
 p_inference = 5
 # Last time point
@@ -321,4 +332,19 @@ print(mean(mse))
 print(mean(mse_unfair))
 print(mean(time))
 
+```
+
+```{r store_results}
+exp_name = "exp2"
+to_export = list("mse"=mse, "mse_sd" = mse_sd, 
+                 "time" = time, "time_sd" = time_sd, 
+                 "hamming"=  hamming, "hamming_sd"=hamming_sd, 
+                 "mean_arcs" = mean_arcs, "mean_arcs_sd" = mean_arcs_sd, 
+                 "pers_arcs" = pers_arcs, "pers_arcs_sd" = pers_arcs_sd, 
+                 "pers_arcs_total" = pers_arcs_total, "pers_arcs_total_sd" = pers_arcs_total_sd)
+
+file = paste("../experiments/",exp_name,".csv", sep="")
+for (i in names(to_export)) {
+  write.table(to_export[i], file = file, append = TRUE)
+}
 ```
