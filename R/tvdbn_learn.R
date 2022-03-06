@@ -61,7 +61,7 @@ weight_causal_time_series <- function(t_star, dataset_length) {
   return(tmp)
 }
 
-learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = n_variables, padding = FALSE) {
+learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = n_variables, padding = FALSE, spatial_penalty = NULL) {
   start.time <- Sys.time()
   A = list()
   intercept = list()
@@ -298,9 +298,9 @@ learn_tvdbn_parameters <- function(dag, A, intercept, sd) {
   return (tvd_bayesian_network)
 }
 
-learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x), padding = FALSE) {
+learn_tvdbn <- function(x, type = "relaxed", kernel_bandwidth = NULL, blacklist = list(), whitelist = list(), max_parents = ncol(x), padding = FALSE, spatial_penalty = NULL) {
   ret = learn_tvdbn_coefficients(x, type = type, kernel_bandwidth = kernel_bandwidth, blacklist = blacklist,
-                                 whitelist = whitelist, max_parents = max_parents, padding = padding)
+                                 whitelist = whitelist, max_parents = max_parents, padding = padding, spatial_penalty = spatial_penalty)
   A = ret[["A"]]
   intercept = ret[["intercept"]]
   sd = ret[["sd"]]

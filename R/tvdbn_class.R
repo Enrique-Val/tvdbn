@@ -56,18 +56,7 @@ bn_to_tvdbn <- function(bn) {
 get_time_points <- function(tvdbn) {
   assertthat::assert_that(any(class(tvdbn) == "tvdbn") || any(class(tvdbn) == "tvdbn.fit"))
 
-  nodes_tvdbn = sort(nodes(tvdbn))
-  first_var = remove_time_name(nodes_tvdbn[1])[1]
-  time_points = 0
-
-  for (i in nodes_tvdbn) {
-    if (first_var == remove_time_name(i)[1]) {
-      time_points = time_points+1
-    }
-    else {
-      return(time_points)
-    }
-  }
+  return(length(unique(sapply(nodes(tvdbn), remove_time_name)[2,])))
 }
 
 
@@ -81,22 +70,12 @@ get_time_points <- function(tvdbn) {
 #' @import bnlearn
 #' @export
 get_variables <- function(tvdbn) {
-  time_instants = get_time_points(tvdbn)
-  node_vector = sort(nodes(tvdbn))
-
-  variable_vector = c()
-  i = 1
-  while(i <= length(node_vector)) {
-    variable_vector = c(variable_vector, tvdbn::remove_time_name(node_vector[i])[1])
-    i = i + time_instants
-  }
-
-  return(variable_vector)
+  return(unique(sapply(nodes(tvdbn), remove_time_name)[1,]))
 }
 
 
 get_initial_time <- function(tvdbn) {
-  return(as.integer(remove_time_name(sort_nodes(nodes(tvdbn))[1])[2]))
+  return(as.integer(remove_time_name(sort_nodes(nodes(tvdbn), order = "time")[1])[2]))
 }
 
 

@@ -292,10 +292,81 @@ sort_nodes <- function(nodes, order = "name") {
     nodes = nodes[order(sapply(nodes, remove_time_name)[1,])]
     nodes = nodes[order(as.integer(sapply(nodes, remove_time_name)[2,]))]
   }
+  else if (order == "time_only") {
+    nodes = nodes[order(as.integer(sapply(nodes, remove_time_name)[2,]))]
+  }
   else {
     stop("\"order\" parameter should be \"name\" or \"time\"\n")
   }
   return(nodes)
+}
+
+trim_network <- function(tvdbn, node_set, expanded = FALSE) {
+  if ("tvdbn.fit" %in% class(tvdbn)) {
+    tvdbn = graph(tvdbn)
+  }
+
+  # Find the order of the network
+  net_length = get_time_points(tvdbn)
+  initial_time = tvdbn::get_initial_time(tvdbn)
+  time_node_set = sapply(node_set, time_name, 1:net_length+initial_time-1)
+  # Then we add the parents and children to the node_set
+  if (expanded) {
+    expanded_time_set = time_node_set
+    for (i in time_node_set) {
+      expanded_time_set = c(expanded_time_set, tvdbn$nodes[[i]]$parents)
+      expanded_time_set = c(expanded_time_set, tvdbn$nodes[[i]]$children)
+    }
+    time_node_set = unique(expanded_time_set)
+  }
+  return(tvdbn::subgraph(tvdbn,time_node_set))
+}
+
+
+
+
+########################
+# SPATIO-TEMPORAL NETS #
+########################
+
+get_coordinates = function(string) {
+  split = str_split(string = string, pattern = "_")[[1]]
+  lat = substr(split[1],4,nchar(split[1]))
+  lon = substr(split[2],4,nchar(split[2]))
+  if (substr(lat,nchar(lat),nchar(lat)) == "S") {
+    lat = -as.double(substr(lat,1,nchar(lat)-1))
+  }
+  else { # N
+    lat = as.double(substr(lat,1,nchar(lat)-1))
+  }
+  if (substr(lon,nchar(lon),nchar(lon)) == "W") {
+    lon = -as.double(substr(lon,1,nchar(lon)-1))
+  }
+  else {
+    lon = as.double(substr(lon,1,nchar(lon)-1))
+  }
+  return(c(lat,lon))
+}
+
+get_dimensions <- function(coord_vector) {
+  coords = sapply(coord_vector, get_coordinates)
+  lats = sort(unique(coords[1,]), decreasing = TRUE, )
+  lons = sort(unique(coords[2,]))
+  return(list(lats,lons))
+}
+
+dataset_to_3darray <- function(dataset) {
+  # First, we find the number of columns
+  dim_list = get_dimensions(colnames(dataset))
+  lats = dim_list[[1]]
+  lons = dim_list[[2]]
+
+  array_3d = array(0, dim = c(length(lats),length(lons),nrow(dataset)), dimnames = list(lats,lons,NULL))
+
+  for (t in 1:nrow(dataset)) {
+    array_3d[,,t] = matrix(dataset[t,], ncol = length(lons), byrow = TRUE)
+  }
+  return(array_3d)
 }
 
 

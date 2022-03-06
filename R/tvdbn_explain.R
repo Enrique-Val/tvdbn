@@ -149,7 +149,7 @@ global_graph <- function(tvdbn, t_0 = NULL, t_f = NULL, threshold = 1) {
 
   # Now we have the arc_matrix and we are going to build the global_graph with said matrix
   # First, we threshold the matrix so that it becomes and adjacency matrix
-  arc_matrix = arc_matrix > threshold*n_trans_network
+  arc_matrix = arc_matrix >= threshold*n_trans_network
   rownames(arc_matrix) = sapply(rownames(arc_matrix), time_name,0)
   colnames(arc_matrix) = sapply(colnames(arc_matrix), time_name,1)
   global_graph = bnlearn::empty.graph(c(rownames(arc_matrix), colnames(arc_matrix)))
