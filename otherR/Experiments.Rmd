@@ -192,13 +192,13 @@ tvdbn_spatial_climate.fit = tvdbn::learn_tvdbn(climate_z, kernel_bandwidth = (le
 tmp = read.csv("../data/motor_measures_v2_red.csv")
 #tmp = tmp[1:6]
 
-# Normalize using z-score
-means = colMeans(tmp)
-sds = sapply(tmp, sd, na.rm = TRUE)
+# Normalize using z-score (this is a mistake)
+#means = colMeans(tmp)
+#sds = sapply(tmp, sd, na.rm = TRUE)
 
-for (i in 2:ncol(tmp)) {
-  tmp[,i] = (tmp[,i]-means[i])/sds[i]
-}
+#for (i in 2:ncol(tmp)) {
+#  tmp[,i] = (tmp[,i]-means[i])/sds[i]
+#}
 
 # Study the length of the time series that benefits us the more
 # We need a trade-off between having a large set of series and having long series
@@ -281,6 +281,12 @@ for (k in kernel_widths) {
   for (i in 1:n_folds) {
     train_data = abind(folds[-i])
     test_data = folds[[i]]
+    # Z-score the data
+    for (j in colnames(train_data)) {
+      train_data[,j,] = (train_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+      test_data[,j,] = (test_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+    }
+    
     t0 = Sys.time()
     network = tvdbn::learn_tvdbn(train_data, kernel_bandwidth = k)
     tf = Sys.time()
@@ -358,7 +364,7 @@ print(mean(time))
 ```
 
 ```{r store_results}
-exp_name = "exp2"
+exp_name = "exp_cli_50"
 metrics = round(cbind(time, time_sd, mean_arcs, mean_arcs_sd, hamming, hamming_sd, pers_arcs, pers_arcs_sd, pers_arcs_total, pers_arcs_total_sd), digits=2)
 to_export = list("mse"=round(mse,digits=2), "mse_sd" = round(mse_sd,digits=2), 
                  "mse_unfair" = round(mse_unfair,digits=2), "mse_unfair_sd" = round(mse_unfair_sd,digits=2),
@@ -373,8 +379,8 @@ for (i in names(to_export)) {
 
 
 ## Experiments with multiple spatial series
-```{r load_data}
-years = 1981:2020
+```{r load_data, include=FALSE}
+years = 2001:2020
 lat_range <- c(30,80)      #latitude range
 lon_range <- c(-30,60)     #longitude range
 
@@ -394,14 +400,140 @@ for (i in years) {
                       return.units = TRUE,
                       reanalysis2=TRUE), along = 3)
   data_climate_i = NCEP.aggregate(data_climate_i, DAYS = FALSE, HOURS = FALSE, fxn = "mean")
-data_climate_i = reduce_resolution(data_climate_i, round(sqrt(length(data_climate_i[,1,1])*length(data_climate_i[,1,1])/30))  )
+data_climate_i = reduce_resolution(data_climate_i, round(sqrt(length(data_climate_i[,1,1])*length(data_climate_i[,1,1])/25))  )
   data_climate = abind(data_climate, as.matrix(transform_to_dataset(data_climate_i)), along = 3)
 }
+```
 
-# Once we have our data, we will apply z-score to normalize its values.
-# As we are dealing only with temperatues, we might apply the same normalization every column.
-# In this experiments, for the sake of validation, we will apply a different z-score to every column
-for (i in 1:ncol(data_climate)) {
-  data_climate[,i,] = (data_climate[,i,]-mean(data_climate[,i,]))/sd(data_climate[,i,])
+```{r load_data, include=FALSE}
+# First, make the folds
+n_folds = 5
+randomized_index = sample(1:length(data_climate[1,1,]))
+split_index = split(randomized_index, cut(seq_along(randomized_index),n_folds,labels = FALSE))
+folds = list()
+for (i in 1:n_folds) {
+  folds[[i]] = data_climate[,,split_index[[i]]]
+}
+
+# Select the interest kernel widths
+kernel_width = 50 #(0.5,50,500,5000)
+spatial_penalties = c(0.1,1,5,10,20,50,-1)
+# Select the threshold for the global_graph
+threshold = 0.95
+# Select the number of points of partial inference
+p_inference = 4
+# Last time point
+last_tp = length(data_climate[,1,1])-1
+
+# Train and validate
+mse = matrix(0, nrow = length(spatial_penalties), ncol = p_inference+1, dimnames = list(as.character(spatial_penalties), c("full", as.character(round(last_tp/p_inference*0:(p_inference-1)))) )  )
+mse_sd = mse
+mse_unfair = mse
+mse_unfair_sd = mse
+
+time = c()
+hamming = c()
+mean_arcs = c()
+pers_arcs = c()
+pers_arcs_total = c()
+time_sd = c()
+hamming_sd = c()
+mean_arcs_sd = c()
+pers_arcs_sd = c()
+pers_arcs_total_sd = c()
+
+
+for (k in spatial_penalties) {
+  mse_k = matrix(0, ncol = p_inference+1, dimnames = list(NULL, c("full", as.character(round(last_tp/p_inference*0:(p_inference-1)))) )  )
+  mse_unfair_k = mse_k
+  
+  time_k = c()
+  hamming_k = c()
+  mean_arcs_k = c()
+  pers_arcs_k = c()
+  pers_arcs_total_k = c()
+  
+  for (i in 1:n_folds) {
+    train_data = abind(folds[-i])
+    test_data = folds[[i]]
+    # Z-score the data
+    for (j in colnames(train_data)) {
+      train_data[,j,] = (train_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+      test_data[,j,] = (test_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+    }
+    t0 = Sys.time()
+    network = NULL
+    if (k<0) {
+      network = tvdbn::learn_tvdbn(train_data, kernel_bandwidth = kernel_width)
+    }
+    else {
+    network = tvdbn::learn_tvdbn(train_data, spatial_penalty = k, kernel_bandwidth = kernel_width)
+    }
+    tf = Sys.time()
+    # Store time
+    time_k = c(time_k, tf-t0)
+    # Store the hamming distance between each consecutive instant
+    hamming_k = c(hamming_k, tvdbn::hamming_changes(network))
+    # Store the number of arcs per transition network
+    mean_arcs_k = c(mean_arcs_k, tvdbn::n_arcs(network))
+    # Store the % of persistent arcs of the network (in relation with the average number of arcs per transition network)
+    pers_arcs_k = c(pers_arcs_k, length(arcs(global_graph(network, threshold = threshold))[,1])/tvdbn::n_arcs(network)*100)
+    # Number of persistent arcs in relations with the set of total arcs
+    pers_arcs_total_k = c(pers_arcs_total_k, length(arcs(global_graph(network, threshold = threshold))[,1])/length(arcs(all_arc_graph(network))[,1])*100)
+    
+    # Mse with test dataset
+    for (j in 1:length(test_data[1,1,])) {
+      mse_i = c()
+      mse_i["full"] = tvdbn::inference(network, test_data[,,j],ini=0,end=length(data_climate[,1,1])-1)[[4]]
+      for (sp in 1:p_inference-1) {
+        mse_i[as.character(round(last_tp/5*sp))] = tvdbn::inference(network, test_data[,,j],ini=round(last_tp/5*sp),end=round(last_tp/5*(sp+1)))[[4]]
+      }
+      mse_k = rbind(mse_k,mse_i)
+    }
+    
+    
+    # Mse with train dataset
+    for (j in 1:length(train_data[1,1,])) {
+      mse_unfair_i = c()
+      mse_unfair_i["full"] = tvdbn::inference(network, train_data[,,j],ini=0,end=length(data_climate[,1,1])-1)[[4]]
+      for (sp in 1:p_inference-1) {
+        mse_unfair_i[as.character(round(last_tp/5*sp))] = tvdbn::inference(network, train_data[,,j],ini=round(last_tp/5*sp),end=round(last_tp/5*(sp+1)))[[4]]
+      }
+      mse_unfair_k = rbind(mse_unfair_k, mse_unfair_i)
+    }
+    
+    
+  } # end for i in folds
+  
+  mse[as.character(k),1] = mean(mse_k[,1])
+  for (i in 1:p_inference+1) {
+    mse[as.character(k),i] = mean(mse_k[,i])
+  }
+  mse_sd[as.character(k),1] = sd(mse_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_sd[as.character(k),i] = sd(mse_k[,i])
+  }
+  
+  mse_unfair[as.character(k),1] = mean(mse_unfair_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_unfair[as.character(k),i] = mean(mse_unfair_k[,i])
+  }
+  mse_unfair_sd[as.character(k),1] = sd(mse_unfair_k[,1])
+  for (i in 1:p_inference+1) {
+    mse_unfair_sd[as.character(k),i] = sd(mse_unfair_k[,i])
+  }
+  
+  time[as.character(k)] = mean(time_k)
+  hamming[as.character(k)] = mean(hamming_k)
+  mean_arcs[as.character(k)] = mean(mean_arcs_k)
+  pers_arcs[as.character(k)] = mean(pers_arcs_k)
+  pers_arcs_total[as.character(k)] = mean(pers_arcs_total_k)
+  
+  time_sd[as.character(k)] = sd(time_k)
+  hamming_sd[as.character(k)] = sd(hamming_k)
+  mean_arcs_sd[as.character(k)] = sd(mean_arcs_k)
+  pers_arcs_sd[as.character(k)] = sd(pers_arcs_k)
+  pers_arcs_total_sd[as.character(k)] = sd(pers_arcs_total_k)
+  
 }
 ```

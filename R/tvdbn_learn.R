@@ -88,7 +88,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
     assertthat::assert_that(is.numeric(spatial_penalty))
     # Create a covariance matrix
     spatial_sigma = matrix(c(spatial_penalty,0,0,spatial_penalty),2,2)
-    tmp = get_dimensions(colnames(x))
+    tmp = tvdbn::get_dimensions(colnames(x))
     latitudes = tmp[[1]]
     longitudes = tmp[[2]]
     n_lats = length(latitudes)
@@ -168,7 +168,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
     penalty_i = whitelist_processed[i,]
     if (!is.null(spatial_sigma)) {
       # Compute the mu (that is, the coordinates of the variable)
-      coords = get_coordinates(variables[i])
+      coords = tvdbn::get_coordinates(variables[i])
       mu = c(match(coords[1], latitudes), match(coords[2],longitudes))
       penalty_i =penalty_i* (1/mvtnorm::dmvnorm(matrix(c(rep(1:n_lats,each = n_lons),rep(1:n_lons,n_lats)),ncol=2), mean = mu, sigma = spatial_sigma))
     }
