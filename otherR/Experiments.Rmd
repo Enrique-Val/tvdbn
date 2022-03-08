@@ -283,8 +283,10 @@ for (k in kernel_widths) {
     test_data = folds[[i]]
     # Z-score the data
     for (j in colnames(train_data)) {
-      train_data[,j,] = (train_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
-      test_data[,j,] = (test_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+      mean_j = mean(train_data[,j,])
+      sd_j = sd(train_data[,j,])
+      train_data[,j,] = (train_data[,j,]-mean_j)/sd_j
+      test_data[,j,] = (test_data[,j,]-mean_j)/sd_j
     }
     
     t0 = Sys.time()
@@ -458,8 +460,10 @@ for (k in spatial_penalties) {
     test_data = folds[[i]]
     # Z-score the data
     for (j in colnames(train_data)) {
-      train_data[,j,] = (train_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
-      test_data[,j,] = (test_data[,j,]-mean(train_data[,j,]))/sd(train_data[,j,])
+      mean_j = mean(train_data[,j,])
+      sd_j = sd(train_data[,j,])
+      train_data[,j,] = (train_data[,j,]-mean_j)/sd_j
+      test_data[,j,] = (test_data[,j,]-mean_j)/sd_j
     }
     t0 = Sys.time()
     network = NULL
