@@ -40,6 +40,6 @@ inference <- function(tvdbn.fit, folded_dt, ini, end) {
     }
     rmse = mean(rmse)
   }
-  return(list(mean_results, sd_results, error_results, rmse))
+  return(list(mean_results, sd_results, error_results, mse))
 }
 

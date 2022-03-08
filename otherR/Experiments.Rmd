@@ -359,12 +359,10 @@ print(mean(time))
 
 ```{r store_results}
 exp_name = "exp2"
-to_export = list("mse"=mse, "mse_sd" = mse_sd, 
-                 "time" = time, "time_sd" = time_sd, 
-                 "hamming"=  hamming, "hamming_sd"=hamming_sd, 
-                 "mean_arcs" = mean_arcs, "mean_arcs_sd" = mean_arcs_sd, 
-                 "pers_arcs" = pers_arcs, "pers_arcs_sd" = pers_arcs_sd, 
-                 "pers_arcs_total" = pers_arcs_total, "pers_arcs_total_sd" = pers_arcs_total_sd)
+metrics = round(cbind(time, time_sd, mean_arcs, mean_arcs_sd, hamming, hamming_sd, pers_arcs, pers_arcs_sd, pers_arcs_total, pers_arcs_total_sd), digits=2)
+to_export = list("mse"=round(mse,digits=2), "mse_sd" = round(mse_sd,digits=2), 
+                 "mse_unfair" = round(mse_unfair,digits=2), "mse_unfair_sd" = round(mse_unfair_sd,digits=2),
+                 "metrics" = metrics)
 
 file = paste("../experiments/",exp_name,".csv", sep="")
 for (i in names(to_export)) {
