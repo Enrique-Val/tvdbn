@@ -78,7 +78,22 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   sd_cv = c()
   sd_b = c()
 
-  # Parameter zeros contains the length of the dataset if we want to pad the names or NULL if we dont
+  # Compute the spatial penalty (in case that we are dealing with spatial data)
+  spatial_sigma = NULL
+  latitudes = NULL
+  longitudes = NULL
+  n_lats = NULL
+  n_lons = NULL
+  if (!is.null(spatial_penalty)) {
+    assertthat::assert_that(is.numeric(spatial_penalty))
+    # Create a covariance matrix
+    spatial_sigma = matrix(c(spatial_penalty,0,0,spatial_penalty),2,2)
+    tmp = get_dimensions(colnames(x))
+    latitudes = tmp[[1]]
+    longitudes = tmp[[2]]
+    n_lats = length(latitudes)
+    n_lons = length(longitudes)
+  }
 
   # Find the marginal distributions of the elements of the first time point
   weights_t0 = c()
@@ -108,9 +123,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   # Process the blacklist
   blacklist_processed = vector(mode = "list", length = n_variables)
 
-
-  print(blacklist_processed)
-
   for (forbidden_arc in blacklist) {
     i = match(forbidden_arc[1], variables)
     j = match(forbidden_arc[2], variables)
@@ -122,7 +134,6 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   whitelist_processed = matrix(data=1, nrow = n_variables, ncol = n_variables, dimnames=list(variables,variables))
 
 
-  print(whitelist_processed)
 
   for (mandatory_arc in whitelist) {
     i = match(mandatory_arc[1], variables)
@@ -152,6 +163,16 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   #Iterate for all times and variables
   lambda=list()
   for (i in 1:n_variables) {
+    # Compute the spatial penalty. The same variable regardless of the time point will have the same penalty.
+    # If the net is not spatial (or no spatial penalty was specified), we give every feature the same penalty (if whitelisted, no penalty)
+    penalty_i = whitelist_processed[i,]
+    if (!is.null(spatial_sigma)) {
+      # Compute the mu (that is, the coordinates of the variable)
+      coords = get_coordinates(variables[i])
+      mu = c(match(coords[1], latitudes), match(coords[2],longitudes))
+      penalty_i =penalty_i* (1/mvtnorm::dmvnorm(matrix(c(rep(1:n_lats,each = n_lons),rep(1:n_lons,n_lats)),ncol=2), mean = mu, sigma = spatial_sigma))
+    }
+
     for (t_star in 2:ts_length) {
       cvfit = NULL
       index = NULL
@@ -195,7 +216,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
       else {
         set.seed(0)
         cvfit = glmnet::cv.glmnet(x_i_t,y_i_t,weights= weights,
-                          exclude = blacklist_processed[[i]], penalty.factor = whitelist_processed[i,],
+                          exclude = blacklist_processed[[i]], penalty.factor = penalty_i,
                           nfolds = 3, dfmax = max_parents)
 
         if (i == 1) {
@@ -222,6 +243,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   print(end.time-start.time)
 
   #Compare evaluation with biased evaluation
+  if (FALSE) {
   print("cv mean and sd")
   print(mean(sd_cv))
   print(sd(sd_cv))
@@ -239,6 +261,7 @@ learn_tvdbn_coefficients <- function(x, type = "relaxed", kernel_bandwidth = NUL
   diff_list = abs(sd_cv-sd_b)
   print(mean(diff_list))
   print(sd(diff_list))
+  }
   return(list("A" = A, "intercept" = intercept, "sd" = sd, "lambda" = lambda))
 
 }

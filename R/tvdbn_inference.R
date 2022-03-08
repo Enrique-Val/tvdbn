@@ -32,6 +32,14 @@ inference <- function(tvdbn.fit, folded_dt, ini, end) {
       error_results[row,col] =(sum - folded_dt[row+ini,col])^2
     }
   }
-  return(list(mean_results, sd_results, error_results, mean(error_results[-1,])))
+  mse = mean(error_results[-1,])
+  if (FALSE) {
+    rmse = c()
+    for (i in 1:ncol(error_results)) {
+      rmse = c(rmse, mean(error_results[-1,i])/sd(folded_dt[,i]))
+    }
+    rmse = mean(rmse)
+  }
+  return(list(mean_results, sd_results, error_results, rmse))
 }
 

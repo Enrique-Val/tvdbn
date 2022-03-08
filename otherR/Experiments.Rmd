@@ -88,7 +88,7 @@ library(abind)
 We have to define four ranges: One for the months, another for the year, for the latitude and for the longitud. Then, we use the method NCEP.gather to retrieve the data within those ranges of a certain variables (in the example the air temperature at pressure levels of 850 is selected).
 
 ```{r load_data}
-month_range <- c(12,12)     #period of months
+month_range <- c(1,12)     #period of months
 year_range <- c(2020,2020) #period of years
 
 lat_range <- c(30,80)      #latitude range
@@ -120,7 +120,7 @@ reduce_resolution <- function(data_NCEP,factor) {
 
 Now, we reduce the dimensionalty. We aggregate by months and reduce the resolution in order to get approx 50 features
 ```{r month_aggregate}
-data_climate_pr = NCEP.aggregate(data_climate, DAYS = TRUE, HOURS = FALSE, fxn = "mean")
+data_climate_pr = NCEP.aggregate(data_climate, DAYS = FALSE, HOURS = FALSE, fxn = "mean")
 data_climate_pr = reduce_resolution(data_climate_pr, round(sqrt(length(data_climate_pr[,1,1])*length(data_climate_pr[,1,1])/20))  )
 ```
 
@@ -155,7 +155,7 @@ transform_to_dataset <- function(data_NCEP) {
     dframe <- rbind(dframe, as.vector(t(data_NCEP[,,k])))
   }
   colnames(dframe) <- names
-  return(setDT(dframe)) 
+  return(dframe)
 }
 ```
 
@@ -163,57 +163,29 @@ transform_to_dataset <- function(data_NCEP) {
 
 ```{r transform_data}
 climate <- transform_to_dataset(data_NCEP = data_climate_pr)
-climate <- as.matrix(climate)
 ```
 
 
 We can undo the transformation as well
 ```{r undo_transform}
-get_coordinates = function(string) {
-  split = str_split(string = string, pattern = "_")[[1]]
-  lat = substr(split[1],4,nchar(split[1]))
-  lon = substr(split[2],4,nchar(split[2]))
-  if (substr(lat,nchar(lat),nchar(lat)) == "S") {
-    lat = -as.double(substr(lat,1,nchar(lat)-1))
-  }
-  else { # N
-    lat = as.double(substr(lat,1,nchar(lat)-1))
-  }
-  if (substr(lon,nchar(lon),nchar(lon)) == "W") {
-    lon = -as.double(substr(lon,1,nchar(lon)-1))
-  }
-  else {
-    lon = as.double(substr(lon,1,nchar(lon)-1))
-  }
-  return(c(lat,lon))
-}
-
-get_dimensions <- function(coord_vector) {
-  coords = sapply(coord_vector, get_coordinates)
-  lats = sort(unique(coords[1,]), decreasing = TRUE, )
-  lons = sort(unique(coords[2,]))
-  return(list(lats,lons))
-}
-
-dataset_to_3darray <- function(dataset) {
-  # First, we find the number of columns
-  dim_list = get_dimensions(colnames(dataset))
-  lats = dim_list[[1]]
-  lons = dim_list[[2]]
-  
-  array_3d = array(0, dim = c(length(lats),length(lons),nrow(dataset)), dimnames = list(lats,lons,NULL))
-  
-  for (t in 1:nrow(dataset)) {
-    array_3d[,,t] = matrix(dataset[t,], ncol = length(lons), byrow = TRUE)
-  }
-  return(array_3d)
-}
-
+undo = dataset_to_3darray(as.matrix(climate))
 ```
 
 We learn a tvdbn
 ```{r learn_tvdbn_climate}
-tvdbn_climate.fit = tvdbn::learn_tvdbn(climate, type = "autoregressive", max_parents = 5, kernel_bandwidth = (length(climate[,1])^2)/49*(1))
+# Normalize using z-score
+climate_z = climate
+means = colMeans(climate)
+sds = sapply(climate, sd, na.rm = TRUE)
+
+for (i in 1:ncol(climate)) {
+  climate_z[,i] = (climate[,i]-means[i])/sds[i]
+}
+
+climate_z <- as.matrix(climate_z)
+
+tvdbn_climate.fit = tvdbn::learn_tvdbn(climate_z, type = "autoregressive", max_parents = 5, kernel_bandwidth = (length(climate_z[,1])^2)/49*(1))
+tvdbn_spatial_climate.fit = tvdbn::learn_tvdbn(climate_z, kernel_bandwidth = (length(climate_z[,1])^2)/49*(1), spatial_penalty = 0.2)
 ```
 ## Validación con motor dataset
 ```{r import_motor, include=FALSE}
@@ -222,7 +194,7 @@ tmp = read.csv("../data/motor_measures_v2_red.csv")
 
 # Normalize using z-score
 means = colMeans(tmp)
-sds = sapply(tmp, mean, na.rm = TRUE)
+sds = sapply(tmp, sd, na.rm = TRUE)
 
 for (i in 2:ncol(tmp)) {
   tmp[,i] = (tmp[,i]-means[i])/sds[i]
@@ -259,7 +231,7 @@ array_3d = abind(mat_list, along = 3)
 ```
 
 
-```{r cv, include=FALSE}
+```{r cv_motor, include=FALSE}
 # First, make the folds
 n_folds = 5
 randomized_index = sample(1:length(array_3d[1,1,]))
@@ -270,7 +242,7 @@ for (i in 1:n_folds) {
 }
 
 # Select the interest kernel widths
-kernel_widths = c(500) #(0.5,50,500,5000)
+kernel_widths = c(0.5,50,500,5000,500000) #(0.5,50,500,5000)
 # Select the threshold for the global_graph
 threshold = 0.95
 # Select the number of points of partial inference
@@ -397,5 +369,41 @@ to_export = list("mse"=mse, "mse_sd" = mse_sd,
 file = paste("../experiments/",exp_name,".csv", sep="")
 for (i in names(to_export)) {
   write.table(to_export[i], file = file, append = TRUE)
+}
+```
+
+
+
+## Experiments with multiple spatial series
+```{r load_data}
+years = 1981:2020
+lat_range <- c(30,80)      #latitude range
+lon_range <- c(-30,60)     #longitude range
+
+data_climate = NULL
+for (i in years) {
+  year_range <- c(i,i) #period of years
+  data_climate_i <- NCEP.gather("air",    #name of the variable
+                      850, #pressure level 850hPa
+                      c(12,12),year_range-1,
+                      lat_range,lon_range,
+                      return.units = TRUE,
+                      reanalysis2=TRUE)
+  data_climate_i <- abind(data_climate_i,NCEP.gather("air",    #name of the variable
+                      850, #pressure level 850hPa
+                      c(1,12),year_range,
+                      lat_range,lon_range,
+                      return.units = TRUE,
+                      reanalysis2=TRUE), along = 3)
+  data_climate_i = NCEP.aggregate(data_climate_i, DAYS = FALSE, HOURS = FALSE, fxn = "mean")
+data_climate_i = reduce_resolution(data_climate_i, round(sqrt(length(data_climate_i[,1,1])*length(data_climate_i[,1,1])/30))  )
+  data_climate = abind(data_climate, as.matrix(transform_to_dataset(data_climate_i)), along = 3)
+}
+
+# Once we have our data, we will apply z-score to normalize its values.
+# As we are dealing only with temperatues, we might apply the same normalization every column.
+# In this experiments, for the sake of validation, we will apply a different z-score to every column
+for (i in 1:ncol(data_climate)) {
+  data_climate[,i,] = (data_climate[,i,]-mean(data_climate[,i,]))/sd(data_climate[,i,])
 }
 ```

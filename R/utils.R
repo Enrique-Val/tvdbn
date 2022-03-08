@@ -352,7 +352,7 @@ get_dimensions <- function(coord_vector) {
   coords = sapply(coord_vector, get_coordinates)
   lats = sort(unique(coords[1,]), decreasing = TRUE, )
   lons = sort(unique(coords[2,]))
-  return(list(lats,lons))
+  return(list("latitudes" = lats, "longitudes" = lons))
 }
 
 dataset_to_3darray <- function(dataset) {
